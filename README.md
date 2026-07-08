@@ -1,4 +1,4 @@
-# Network Toolkit Python v3.6
+# Network Toolkit
 
 Cross-platform modular network diagnostics toolkit for:
 
