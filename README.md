@@ -330,6 +330,49 @@ sudo .venv/bin/python main.py
 
 
 
+
+
+## Intune / Company Portal Python on Windows
+
+If Python was installed through Intune or Company Portal, it may not be available as:
+
+```powershell
+python
+py -3
+```
+
+The Windows installer now checks:
+
+- Python Launcher: `py -3`
+- PATH: `python`
+- PATH: `python3`
+- Common Program Files locations
+- Common user AppData Python locations
+- Limited search under Program Files and LocalAppData
+- Manual path entry for `python.exe`
+
+If the installer still cannot find Python, ask IT for the actual path to `python.exe`.
+
+You can also check manually:
+
+```powershell
+where python
+where py
+Get-ChildItem "C:\Program Files" -Filter python.exe -Recurse -ErrorAction SilentlyContinue
+Get-ChildItem "$env:LOCALAPPDATA" -Filter python.exe -Recurse -ErrorAction SilentlyContinue
+```
+
+If Intune installed Python without `venv` or `pip`, ask IT to include:
+
+```text
+venv
+pip
+setuptools
+wheel
+```
+
+in the Python deployment.
+
 ## Windows install.bat troubleshooting
 
 If you see:

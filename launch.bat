@@ -11,25 +11,6 @@ cd /d "%~dp0"
 
 set "VENV_DIR=.venv"
 set "VENV_PY=%VENV_DIR%\Scripts\python.exe"
-set "PY_CMD="
-
-where py >nul 2>nul
-if not errorlevel 1 (
-    py -3 --version >nul 2>nul
-    if not errorlevel 1 set "PY_CMD=py -3"
-)
-
-if "%PY_CMD%"=="" (
-    where python >nul 2>nul
-    if not errorlevel 1 set "PY_CMD=python"
-)
-
-if "%PY_CMD%"=="" (
-    echo ERROR: Python 3 is not installed or not in PATH.
-    echo Run install.bat after installing Python 3.
-    pause
-    exit /b 1
-)
 
 if not exist "%VENV_PY%" (
     echo Virtual environment is missing or incomplete.
