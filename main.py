@@ -193,7 +193,7 @@ def main_menu():
         elif choice == "16":
             settings_menu()
             config = load_config()
-        elif choice == "17":
+        elif choice == "0":
             clean_exit()
 
 
