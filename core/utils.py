@@ -1,3 +1,11 @@
+"""
+Shared utility helpers.
+
+Anything that multiple modules need, like command execution, interface filtering,
+and subnet calculation, belongs here. This keeps the diagnostics modules focused
+instead of making them carry a backpack full of unrelated chores.
+"""
+
 import ipaddress
 import platform
 import re

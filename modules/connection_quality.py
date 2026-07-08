@@ -1,3 +1,18 @@
+"""
+Connection quality diagnostics.
+
+This module replaces the old ICMP-only latency/jitter test with practical tests
+that still work when corporate networks block ping, because apparently blocking
+the simplest diagnostic known to humanity is now considered enterprise security.
+
+Methods:
+- TCP connect latency
+- HTTPS request timing
+- DNS lookup timing
+- ICMP ping, when allowed
+- iPerf3, when configured
+"""
+
 import socket
 import ssl
 import statistics
@@ -8,6 +23,7 @@ from urllib.parse import urlparse
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
+from rich.prompt import Prompt
 
 from core.utils import run_command
 
@@ -26,6 +42,14 @@ def _safe_float(value, default):
         return float(value)
     except Exception:
         return default
+
+
+def _safe_bool(value, default=True):
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    return str(value).lower() in ["true", "1", "yes", "y", "on"]
 
 
 def summarize_samples(samples):
@@ -60,6 +84,32 @@ def summarize_samples(samples):
         "max_ms": round(max(latencies), 2),
         "jitter_ms": round(jitter, 2),
         "samples": samples,
+    }
+
+
+def config_values(config):
+    return {
+        "host": config.get("connection_quality_host", "cloudflare.com"),
+        "ip": config.get("connection_quality_ip", "1.1.1.1"),
+        "port": _safe_int(config.get("connection_quality_port", 443), 443),
+        "url": config.get("connection_quality_url", "https://cloudflare.com"),
+        "attempts": _safe_int(config.get("connection_quality_attempts", 10), 10),
+        "timeout": _safe_float(config.get("connection_quality_timeout_seconds", 3), 3),
+        "preferred": str(config.get("connection_quality_preferred_method", "auto")).lower(),
+        "dns_domain": config.get("connection_quality_dns_domain", "google.com"),
+        "dns_server": config.get("connection_quality_dns_server", "1.1.1.1"),
+        "iperf_server": config.get("iperf3_server", ""),
+        "iperf_duration": _safe_int(config.get("iperf3_duration_seconds", 10), 10),
+    }
+
+
+def score_inclusion_settings(config):
+    return {
+        "TCP Connect": _safe_bool(config.get("connection_quality_score_include_tcp", True), True),
+        "HTTPS Request": _safe_bool(config.get("connection_quality_score_include_https", True), True),
+        "DNS Lookup": _safe_bool(config.get("connection_quality_score_include_dns", True), True),
+        "ICMP Ping": _safe_bool(config.get("connection_quality_score_include_icmp", False), False),
+        "iPerf3": _safe_bool(config.get("connection_quality_score_include_iperf3", True), True),
     }
 
 
@@ -256,13 +306,20 @@ def iperf3_test(server, duration=10):
     }
 
 
-def quality_score(results):
+def quality_score(results, included_methods=None):
     score = 100
     reasons = []
-    successful = [r for r in results if r.get("success")]
 
+    included_methods = included_methods or {}
+    scored_results = [r for r in results if included_methods.get(r.get("method"), True)]
+    excluded_results = [r for r in results if not included_methods.get(r.get("method"), True)]
+
+    if not scored_results:
+        return 0, ["No tests are included in the health score."], excluded_results
+
+    successful = [r for r in scored_results if r.get("success")]
     if not successful:
-        return 0, ["No successful quality tests."]
+        return 0, ["No successful included quality tests."], excluded_results
 
     best_latency = min([r.get("avg_ms") for r in successful if r.get("avg_ms") is not None] or [999])
     worst_jitter = max([r.get("jitter_ms") for r in successful if r.get("jitter_ms") is not None] or [0])
@@ -295,17 +352,20 @@ def quality_score(results):
         score -= 15
         reasons.append("Some connection failure/loss.")
 
-    failed_methods = [r["method"] for r in results if not r.get("success")]
+    failed_methods = [r["method"] for r in scored_results if not r.get("success")]
     if failed_methods:
         score -= min(15, len(failed_methods) * 3)
-        reasons.append(f"Some methods failed: {', '.join(failed_methods)}.")
+        reasons.append(f"Some included methods failed: {', '.join(failed_methods)}.")
+
+    if excluded_results:
+        reasons.append("Excluded from score: " + ", ".join(r.get("method", "Unknown") for r in excluded_results) + ".")
 
     score = max(0, min(100, score))
 
     if not reasons:
         reasons.append("Connection quality looks healthy.")
 
-    return score, reasons
+    return score, reasons, excluded_results
 
 
 def score_label(score):
@@ -320,12 +380,17 @@ def score_label(score):
     return "Bad"
 
 
-def print_method_result(result):
-    table = Table(title=f"{result.get('method')} — {result.get('target')}")
+def print_method_result(result, included_in_score=True):
+    title = f"{result.get('method')} — {result.get('target')}"
+    if not included_in_score:
+        title += " (Excluded from Health Score)"
+
+    table = Table(title=title)
     table.add_column("Metric")
     table.add_column("Value")
 
     fields = [
+        ("Included in Health Score", "included_in_score"),
         ("Success", "success"),
         ("Attempts", "attempts"),
         ("Successful Attempts", "successful_attempts"),
@@ -340,6 +405,8 @@ def print_method_result(result):
         ("Avg TLS", "avg_tls_ms"),
         ("Avg First Byte", "avg_first_byte_ms"),
     ]
+
+    result["included_in_score"] = included_in_score
 
     for label, key in fields:
         if key in result and result.get(key) is not None:
@@ -357,18 +424,27 @@ def print_method_result(result):
     console.print(table)
 
 
-def connection_quality_test(config):
-    host = config.get("connection_quality_host", "cloudflare.com")
-    ip = config.get("connection_quality_ip", "1.1.1.1")
-    port = _safe_int(config.get("connection_quality_port", 443), 443)
-    url = config.get("connection_quality_url", "https://cloudflare.com")
-    attempts = _safe_int(config.get("connection_quality_attempts", 10), 10)
-    timeout = _safe_float(config.get("connection_quality_timeout_seconds", 3), 3)
-    preferred = str(config.get("connection_quality_preferred_method", "auto")).lower()
-    dns_domain = config.get("connection_quality_dns_domain", "google.com")
-    dns_server = config.get("connection_quality_dns_server", "1.1.1.1")
-    iperf_server = config.get("iperf3_server", "")
-    iperf_duration = _safe_int(config.get("iperf3_duration_seconds", 10), 10)
+def run_named_method(method, config):
+    values = config_values(config)
+
+    if method == "tcp":
+        return tcp_connect_test(values["ip"] or values["host"], values["port"], values["attempts"], values["timeout"])
+    if method == "https":
+        return https_request_test(values["url"], values["attempts"], values["timeout"])
+    if method == "dns":
+        return dns_latency_test(values["dns_domain"], values["dns_server"], values["attempts"], values["timeout"])
+    if method == "icmp":
+        return icmp_test(values["ip"] or values["host"], values["attempts"], values["timeout"])
+    if method == "iperf3":
+        return iperf3_test(values["iperf_server"], values["iperf_duration"])
+
+    raise ValueError(f"Unknown connection quality method: {method}")
+
+
+def connection_quality_test(config, methods_override=None):
+    values = config_values(config)
+    preferred = values["preferred"]
+    included = score_inclusion_settings(config)
 
     console.print(Panel.fit(
         "[bold cyan]Connection Quality Test[/bold cyan]\n"
@@ -376,38 +452,42 @@ def connection_quality_test(config):
         border_style="cyan"
     ))
 
-    method_map = {
-        "tcp": lambda: tcp_connect_test(ip or host, port, attempts, timeout),
-        "https": lambda: https_request_test(url, attempts, timeout),
-        "dns": lambda: dns_latency_test(dns_domain, dns_server, attempts, timeout),
-        "icmp": lambda: icmp_test(ip or host, attempts, timeout),
-        "iperf3": lambda: iperf3_test(iperf_server, iperf_duration),
-    }
-
-    if preferred in ["tcp", "https", "dns", "icmp", "iperf3"]:
+    if methods_override:
+        methods = methods_override
+    elif preferred in ["tcp", "https", "dns", "icmp", "iperf3"]:
         methods = [preferred]
     elif preferred == "all":
         methods = ["tcp", "https", "dns", "icmp", "iperf3"]
     else:
         methods = ["tcp", "https", "dns", "icmp"]
-        if iperf_server:
+        if values["iperf_server"]:
             methods.append("iperf3")
+
+    method_display = {
+        "tcp": "TCP Connect",
+        "https": "HTTPS Request",
+        "dns": "DNS Lookup",
+        "icmp": "ICMP Ping",
+        "iperf3": "iPerf3",
+    }
 
     results = []
     for method in methods:
         console.print(f"\n[cyan]Running {method.upper()} test...[/cyan]")
-        result = method_map[method]()
+        result = run_named_method(method, config)
+        included_in_score = included.get(method_display.get(method, result.get("method")), True)
+        result["included_in_score"] = included_in_score
         results.append(result)
-        print_method_result(result)
+        print_method_result(result, included_in_score=included_in_score)
 
-    score, reasons = quality_score(results)
+    score, reasons, excluded = quality_score(results, included)
 
     summary = Table(title="Network Health Score")
     summary.add_column("Item")
     summary.add_column("Result")
     summary.add_row("Score", f"{score}/100")
     summary.add_row("Rating", score_label(score))
-    summary.add_row("Best Available Method", next((r["method"] for r in results if r.get("success")), "None"))
+    summary.add_row("Best Available Included Method", next((r["method"] for r in results if r.get("success") and r.get("included_in_score")), "None"))
     summary.add_row("Notes", " ".join(reasons))
     console.print(summary)
 
@@ -417,18 +497,63 @@ def connection_quality_test(config):
         "rating": score_label(score),
         "reasons": reasons,
         "methods_run": methods,
+        "score_inclusion": included,
+        "excluded_methods": [r.get("method") for r in excluded],
         "results": results,
-        "settings": {
-            "host": host,
-            "ip": ip,
-            "port": port,
-            "url": url,
-            "attempts": attempts,
-            "timeout": timeout,
-            "preferred_method": preferred,
-            "dns_domain": dns_domain,
-            "dns_server": dns_server,
-            "iperf3_server": iperf_server,
-            "iperf3_duration": iperf_duration,
-        },
+        "settings": values,
     }
+
+
+def connection_quality_submenu(config):
+    while True:
+        console.clear()
+        table = Table(title="Connection Tests")
+        table.add_column("#")
+        table.add_column("Test")
+
+        options = [
+            ("1", "Run Auto Quality Test"),
+            ("2", "Run All Tests"),
+            ("3", "TCP Connect Test"),
+            ("4", "HTTPS Request Test"),
+            ("5", "DNS Lookup Test"),
+            ("6", "ICMP Ping Test"),
+            ("7", "iPerf3 Test"),
+            ("8", "Show Score Inclusion Settings"),
+        ]
+
+        for key, label in options:
+            table.add_row(key, label)
+
+        table.add_row("", "")
+        table.add_row("0", "Return to Main Menu")
+        console.print(table)
+
+        choice = Prompt.ask("Selection")
+
+        if choice == "1":
+            return connection_quality_test(config)
+        if choice == "2":
+            return connection_quality_test(config, methods_override=["tcp", "https", "dns", "icmp", "iperf3"])
+        if choice == "3":
+            return connection_quality_test(config, methods_override=["tcp"])
+        if choice == "4":
+            return connection_quality_test(config, methods_override=["https"])
+        if choice == "5":
+            return connection_quality_test(config, methods_override=["dns"])
+        if choice == "6":
+            return connection_quality_test(config, methods_override=["icmp"])
+        if choice == "7":
+            return connection_quality_test(config, methods_override=["iperf3"])
+        if choice == "8":
+            included = score_inclusion_settings(config)
+            settings_table = Table(title="Health Score Inclusion Settings")
+            settings_table.add_column("Method")
+            settings_table.add_column("Included?")
+            for method, enabled in included.items():
+                settings_table.add_row(method, "Yes" if enabled else "No")
+            console.print(settings_table)
+            console.print("\n[yellow]Change these in Settings or settings.yaml.[/yellow]")
+            Prompt.ask("Press Enter to continue")
+        if choice == "0":
+            return None

@@ -1,3 +1,16 @@
+"""
+Network Toolkit main menu.
+
+This file is intentionally boring in the best possible way:
+- imports the modules
+- shows menus
+- collects report data
+- exits cleanly when asked
+
+The heavy lifting belongs in modules/, because giant do-everything files are where
+maintainability goes to become a ghost story.
+"""
+
 import atexit
 import os
 import subprocess
@@ -18,7 +31,7 @@ from modules.internet import internet_test, speed_test
 from modules.wifi import wifi_info, wifi_scan, advanced_wifi_diagnostics
 from modules.scanning import subnet_scan
 from modules.monitoring import latency_monitor
-from modules.connection_quality import connection_quality_test
+from modules.connection_quality import connection_quality_submenu
 from modules.switch import switch_port_info
 from modules.permissions import show_permissions_help
 
@@ -26,6 +39,11 @@ console = Console()
 
 
 def goodbye():
+    """Reserved for future cleanup hooks.
+
+    Keeping this here lets us add cleanup later without redesigning exit behavior.
+    Yes, this is the software equivalent of leaving yourself a labeled drawer.
+    """
     pass
 
 
@@ -33,6 +51,12 @@ atexit.register(goodbye)
 
 
 def clean_exit():
+    """Exit immediately and cleanly.
+
+    Important: do not route this through run_and_collect(), because that wrapper
+    intentionally pauses after tools run. Exit should exit, not ask the user to
+    admire the scenery first.
+    """
     console.print()
     console.print("[green]Network Toolkit exited successfully.[/green]")
     console.print()
@@ -40,12 +64,14 @@ def clean_exit():
 
 
 def is_admin():
+    """Return True if the process is running with administrator/root privileges."""
     if hasattr(os, "geteuid"):
         return os.geteuid() == 0
     return False
 
 
 def restart_in_admin_mode():
+    """Relaunch the toolkit with sudo/admin privileges on Unix-like systems."""
     if is_admin():
         console.print("[green]Already running in Administrator Mode.[/green]")
         Prompt.ask("Press Enter to continue")
@@ -73,6 +99,12 @@ def restart_in_admin_mode():
 
 
 def run_admin_required(report, name, func, *args):
+    """Run a tool that may need elevated permissions.
+
+    If we are not currently elevated, ask whether to restart in Administrator
+    Mode. Corporate network diagnostics: where asking permission is somehow
+    still easier than asking the firewall why it hates joy.
+    """
     if not is_admin():
         console.print()
         console.print("[yellow]This tool may require Administrator Mode for complete results.[/yellow]")
@@ -84,23 +116,33 @@ def run_admin_required(report, name, func, *args):
 
 
 def run_and_collect(report, name, func, *args):
+    """Run a tool, store its result, then pause so the user can read output."""
     result = func(*args)
-    if result is not None:
-        report.add_result(name, result)
+
+    # Submenus can return None when the user chooses Return. In that case, do
+    # not add an empty report section and do not pause again. One prompt is plenty.
+    if result is None:
+        return
+
+    report.add_result(name, result)
     Prompt.ask("Press Enter to continue")
 
 
 def export_menu(report, config):
+    """Report export submenu."""
     while True:
         console.clear()
         table = Table(title="Export Reports")
-        table.add_column("#")
-        table.add_column("Export Type")
+        table.add_column("#", style="cyan", justify="right")
+        table.add_column("Export Type", style="white")
+
         table.add_row("1", "Export JSON")
         table.add_row("2", "Export CSV")
         table.add_row("3", "Export HTML")
         table.add_row("4", "Export All")
+        table.add_row("", "")
         table.add_row("0", "Return")
+
         console.print(table)
 
         choice = Prompt.ask("Selection")
@@ -120,6 +162,7 @@ def export_menu(report, config):
 
 
 def main_menu():
+    """Primary application menu."""
     config = load_config()
     report = ReportSession()
 
@@ -128,9 +171,13 @@ def main_menu():
 
         mode = "Administrator" if is_admin() else "Normal"
 
-        table = Table(title=f"Network Toolkit — {mode} Mode")
-        table.add_column("#")
-        table.add_column("Test / Tool")
+        table = Table(
+            title=f"Network Toolkit — {mode} Mode",
+            show_header=True,
+            header_style="bold cyan",
+        )
+        table.add_column("#", style="cyan", justify="right", width=4)
+        table.add_column("Test / Tool", style="white")
 
         options = [
             "Useful Interface / IP Info",
@@ -144,16 +191,18 @@ def main_menu():
             "Advanced Wi-Fi Diagnostics",
             "Subnet Scan",
             "Switch + Port Info",
-            "Connection Quality Test",
+            "Connection Tests",
             "Restart in Administrator Mode",
             "Permissions / Setup Help",
             "Export Reports",
-            "Settings"
+            "Settings",
         ]
 
         for i, item in enumerate(options, start=1):
             table.add_row(str(i), item)
-        
+
+        # Spacer row before Exit, because visual breathing room should not be a
+        # luxury feature. Menus deserve dignity too.
         table.add_row("", "")
         table.add_row("0", "Exit")
 
@@ -186,7 +235,7 @@ def main_menu():
         elif choice == "11":
             run_admin_required(report, "switch_port_info", switch_port_info)
         elif choice == "12":
-            run_and_collect(report, "connection_quality_test", connection_quality_test, config)
+            run_and_collect(report, "connection_tests", connection_quality_submenu, config)
         elif choice == "13":
             restart_in_admin_mode()
         elif choice == "14":

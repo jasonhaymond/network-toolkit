@@ -1,3 +1,11 @@
+"""
+Wi-Fi diagnostics.
+
+macOS, Windows, and Linux all expose Wi-Fi details differently, because one
+standard interface would have been too merciful. This module hides that mess
+behind a small set of functions used by the main menu.
+"""
+
 import os
 import platform
 import re

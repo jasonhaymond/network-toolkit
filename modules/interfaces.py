@@ -1,3 +1,11 @@
+"""
+Interface diagnostics.
+
+Shows useful network interfaces by default, while allowing an all-interfaces view
+for those glorious moments when you really do need to stare at utun, awdl, bridge,
+and other digital plumbing.
+"""
+
 from rich.console import Console
 from rich.table import Table
 from core.utils import interface_records, get_primary_interface_record

@@ -1,16 +1,37 @@
-# Network Toolkit
+# 🌐 Network Toolkit
 
-Cross-platform modular network diagnostics toolkit for:
+> A cross-platform network diagnostics toolkit for people who would rather fix the network than argue with it.  
+> Works on **macOS**, **Windows 10+**, and **Ubuntu-based Linux**.
 
-- macOS
-- Windows 10+
-- Ubuntu-based Linux
-
-No version number is used in the project folder or app title so you can replace/update the folder without changing your workflow. Humanity briefly defeats chaos. Briefly.
+<p>
+  <img alt="Python" src="https://img.shields.io/badge/Python-3.10%2B-blue">
+  <img alt="Platforms" src="https://img.shields.io/badge/Platforms-macOS%20%7C%20Windows%20%7C%20Linux-green">
+  <img alt="Status" src="https://img.shields.io/badge/Status-Field%20Toolkit-orange">
+</p>
 
 ---
 
-## Quick Start — macOS
+## ✨ What This Does
+
+Network Toolkit gathers common troubleshooting checks into one menu-driven app:
+
+| Area | What it checks |
+|---|---|
+| 🖧 Interfaces | IP, MAC, netmask, subnet, useful/all interface views |
+| 🌍 Internet | Reachability, DNS, speed test |
+| 📶 Wi-Fi | SSID/BSSID where OS permissions allow it, signal, channel, AP scan |
+| 🔌 Switching | LLDP switch/port discovery where supported |
+| 🧪 Connection Quality | TCP, HTTPS, DNS, ICMP, iPerf3, health score |
+| 📄 Reports | JSON, CSV, and formatted HTML reports |
+| 🛠 Permissions | Platform-specific setup and permission help |
+
+Because apparently the only thing harder than fixing a network is remembering seventeen different commands across three operating systems.
+
+---
+
+## 🚀 Quick Start
+
+### macOS
 
 After unzipping, double-click:
 
@@ -25,7 +46,7 @@ cd ~/Downloads/network-toolkit
 ./launch.command
 ```
 
-### Recommended First-Time Setup
+Recommended first-time setup:
 
 ```bash
 cd ~/Downloads/network-toolkit
@@ -33,9 +54,7 @@ cd ~/Downloads/network-toolkit
 ./launch.sh
 ```
 
----
-
-## Quick Start — Linux / Ubuntu
+### Linux / Ubuntu
 
 ```bash
 cd ~/Downloads/network-toolkit
@@ -44,9 +63,7 @@ chmod +x install.sh launch.sh
 ./launch.sh
 ```
 
----
-
-## Quick Start — Windows 10+
+### Windows 10+
 
 Open PowerShell or Windows Terminal in the project folder:
 
@@ -59,7 +76,7 @@ For best results on Windows, run PowerShell or Windows Terminal as Administrator
 
 ---
 
-# Launcher Menu
+## 🧭 Launcher Menu
 
 ```text
 1) Start Network Toolkit
@@ -71,42 +88,144 @@ For best results on Windows, run PowerShell or Windows Terminal as Administrator
 
 ---
 
-
-
-# Launcher / Installer Structure
-
-The root launcher files are intentionally small:
+## 🗂 Project Layout
 
 ```text
-launch.sh
-launch.command
-launch.bat
-install.sh
-install.bat
+network-toolkit/
+├── main.py
+├── settings.yaml
+├── requirements.txt
+├── launch.sh
+├── launch.command
+├── launch.bat
+├── install.sh
+├── install.bat
+├── core/
+│   ├── config.py
+│   ├── exports.py
+│   └── utils.py
+├── modules/
+│   ├── connection_quality.py
+│   ├── dns.py
+│   ├── gateway.py
+│   ├── interfaces.py
+│   ├── internet.py
+│   ├── permissions.py
+│   ├── scanning.py
+│   ├── switch.py
+│   └── wifi.py
+└── scripts/
+    ├── unix/
+    └── windows/
 ```
 
-They delegate to shared platform helpers:
+The root launcher files are intentionally small. The real launch/install logic lives in `scripts/`, because copy-pasting the same bug into four files is not software architecture, it is gardening for gremlins.
+
+---
+
+## 🎛 Main Menu
 
 ```text
-scripts/
-├── unix/
-│   ├── common.sh
-│   ├── install_unix.sh
-│   └── launch_unix.sh
-└── windows/
-    ├── common.bat
-    ├── detect_python.bat
-    ├── install_windows.bat
-    └── launch_windows.bat
+1) Useful Interface / IP Info
+2) All Interface / IP Info
+3) Gateway Info
+4) DNS Test
+5) Internet Reachability
+6) Internet Speed Test
+7) Wi-Fi Info
+8) Wi-Fi AP Scan
+9) Advanced Wi-Fi Diagnostics
+10) Subnet Scan
+11) Switch + Port Info
+12) Connection Tests
+13) Restart in Administrator Mode
+14) Permissions / Setup Help
+15) Export Reports
+16) Settings
+
+0) Exit
 ```
 
-This keeps duplicated logic out of the root scripts. Updating Python detection, venv creation, dependency installs, or launch behavior now happens in one shared helper per platform, because maintaining the same bug in four places is a hobby best left to printer drivers.
+All menus use:
 
-# Install Scripts
+```text
+0) Exit
+```
+
+or:
+
+```text
+0) Return
+```
+
+There is a blank row above exit/return options because visual spacing is cheaper than confusion. Revolutionary stuff.
+
+---
+
+# 🧪 Connection Tests
+
+The old ICMP-only latency/jitter test has been replaced with a **Connection Tests** submenu.
+
+Why? Because many corporate networks block ICMP ping. The network may be fine, but ping gets tossed into a firewall dungeon.
+
+## Connection Tests Submenu
+
+```text
+1) Run Auto Quality Test
+2) Run All Tests
+3) TCP Connect Test
+4) HTTPS Request Test
+5) DNS Lookup Test
+6) ICMP Ping Test
+7) iPerf3 Test
+8) Show Score Inclusion Settings
+
+0) Return to Main Menu
+```
+
+## Methods
+
+| Method | What it measures | Works when ICMP is blocked? |
+|---|---:|---:|
+| TCP Connect | Time to open a TCP socket | ✅ Usually |
+| HTTPS Request | DNS + TCP + TLS + first byte | ✅ Usually |
+| DNS Lookup | Resolver latency | ✅ Usually |
+| ICMP Ping | Traditional ping | ❌ Often blocked |
+| iPerf3 | Throughput/performance to server | ✅ If server exists |
+
+## Health Score Exclusions
+
+Some tests may be expected to fail. For example, ICMP is often blocked on corporate networks. You can exclude methods from the health score:
+
+```yaml
+connection_quality_score_include_tcp: true
+connection_quality_score_include_https: true
+connection_quality_score_include_dns: true
+connection_quality_score_include_icmp: false
+connection_quality_score_include_iperf3: true
+```
+
+By default, ICMP is excluded from the health score. Ping can sulk in the corner without ruining the report card.
+
+---
+
+# 📄 Reports
+
+Reports can be exported as:
+
+| Format | Best for |
+|---|---|
+| JSON | Automation, future dashboards |
+| CSV | Spreadsheets and inventories |
+| HTML | Human-readable troubleshooting reports |
+
+The HTML report preserves command output in readable `<pre>` blocks instead of stuffing terminal dumps into sad table cells.
+
+---
+
+# 🔧 Install Scripts
 
 ## macOS / Linux
-
-Use:
 
 ```bash
 ./install.sh
@@ -117,15 +236,12 @@ The installer will:
 - Check for Python 3
 - Create `.venv`
 - Install Python requirements
-- Install/update pip, setuptools, and wheel
+- Upgrade pip, setuptools, and wheel
 - Fix executable permissions
-- On macOS, install Homebrew packages if Homebrew is available
-- On Ubuntu/Linux, install apt packages
+- Install system packages where supported
 - Enable `lldpd` on Linux when available
 
 ## Windows
-
-Use:
 
 ```powershell
 install.bat
@@ -133,156 +249,79 @@ install.bat
 
 The installer will:
 
-- Check for Python
-- Warn if Git is missing
+- Detect Python from PATH, `py -3`, common locations, and Intune-style installs
+- Offer manual `python.exe` path entry
 - Create `.venv`
 - Install Python requirements
-- Upgrade pip, setuptools, and wheel
-- Suggest Nmap/Npcap/Wireshark
+- Suggest optional Nmap/Npcap/Wireshark tools
 
 ---
 
-# Manual Setup Instructions
+# 🪟 Windows / Intune Python Notes
 
-## macOS Manual Setup
+If Python was installed through Intune or Company Portal, it may not be available as:
 
-### 1. Install Apple Command Line Tools
-
-```bash
-xcode-select --install
+```powershell
+python
+py -3
 ```
 
-### 2. Install Homebrew
+The Windows installer checks:
 
-Homebrew is optional but strongly recommended:
+- `py -3`
+- `python`
+- `python3`
+- common Program Files locations
+- common AppData locations
+- limited Program Files and LocalAppData search
+- manual `python.exe` path entry
 
-```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+Manual checks:
+
+```powershell
+where python
+where py
+Get-ChildItem "C:\Program Files" -Filter python.exe -Recurse -ErrorAction SilentlyContinue
+Get-ChildItem "$env:LOCALAPPDATA" -Filter python.exe -Recurse -ErrorAction SilentlyContinue
 ```
 
-### 3. Install Required / Recommended Packages
+If Intune installed Python without `venv` or `pip`, ask IT to include:
 
-```bash
-brew install python git nmap lldpd iperf3 arp-scan speedtest-cli
-```
-
-### 4. Create the Python Virtual Environment
-
-```bash
-cd ~/Downloads/network-toolkit
-python3 -m venv .venv
-```
-
-### 5. Activate the Virtual Environment
-
-```bash
-source .venv/bin/activate
-```
-
-### 6. Install Python Requirements
-
-```bash
-python -m pip install --upgrade pip setuptools wheel
-pip install -r requirements.txt
-```
-
-### 7. Launch
-
-```bash
-python main.py
-```
-
-Or:
-
-```bash
-./launch.sh
-```
-
-### 8. Admin Mode
-
-```bash
-sudo .venv/bin/python main.py
+```text
+venv
+pip
+setuptools
+wheel
 ```
 
 ---
 
-## Windows 10+ Manual Setup
+# 🍎 macOS SSID/BSSID Permissions
 
-### 1. Install Python
+Newer macOS versions may redact SSID and BSSID as location-sensitive data.
 
-Download Python 3 from:
-
-```text
-https://www.python.org/downloads/windows/
-```
-
-During installation, check:
+Go to:
 
 ```text
-Add python.exe to PATH
+System Settings → Privacy & Security → Location Services
 ```
 
-Yes, the tiny checkbox matters. Because apparently software installers enjoy scavenger hunts.
+Then:
 
-### 2. Install Git
+1. Enable Location Services globally.
+2. Enable Location Services for your terminal app:
+   - Terminal
+   - iTerm2
+   - VS Code
+3. Quit and reopen the terminal app.
+4. Run the toolkit again.
+5. Try Administrator Mode if needed.
 
-Download Git for Windows:
-
-```text
-https://git-scm.com/download/win
-```
-
-### 3. Optional Network Tools
-
-Install:
-
-```text
-Nmap + Npcap:
-https://nmap.org/download.html
-
-Wireshark:
-https://www.wireshark.org/
-```
-
-### 4. Open Terminal
-
-Open PowerShell or Windows Terminal. For best results, right-click and choose:
-
-```text
-Run as administrator
-```
-
-### 5. Create Virtual Environment
-
-```powershell
-cd $env:USERPROFILE\Downloads\network-toolkit
-python -m venv .venv
-```
-
-### 6. Install Python Requirements
-
-```powershell
-.venv\Scripts\python.exe -m pip install --upgrade pip setuptools wheel
-.venv\Scripts\pip.exe install -r requirements.txt
-```
-
-### 7. Launch
-
-```powershell
-.venv\Scripts\python.exe main.py
-```
-
-Or:
-
-```powershell
-launch.bat
-```
+If macOS itself returns `<redacted>`, the toolkit cannot reveal the value until macOS permissions allow it. The toolkit is helpful, not magical. Tragic, I know.
 
 ---
 
-## Ubuntu / Debian-Based Linux Manual Setup
-
-### 1. Install Required Packages
+# 🐧 Ubuntu / Debian Setup
 
 ```bash
 sudo apt update
@@ -305,164 +344,42 @@ sudo apt install -y \
   unzip
 ```
 
-### 2. Enable LLDP
+Enable LLDP:
 
 ```bash
 sudo systemctl enable --now lldpd
 ```
 
-### 3. Create Virtual Environment
+---
 
-```bash
-cd ~/Downloads/network-toolkit
-python3 -m venv .venv
-```
+# 📦 Optional Tools
 
-If this fails:
-
-```bash
-sudo apt install python3-venv
-```
-
-Because Linux likes making you earn conveniences with tiny missing packages. Charming.
-
-### 4. Activate Virtual Environment
-
-```bash
-source .venv/bin/activate
-```
-
-### 5. Install Python Requirements
-
-```bash
-python -m pip install --upgrade pip setuptools wheel
-pip install -r requirements.txt
-```
-
-### 6. Launch
-
-```bash
-python main.py
-```
-
-Or:
-
-```bash
-./launch.sh
-```
-
-### 7. Admin Mode
-
-```bash
-sudo .venv/bin/python main.py
-```
+| Platform | Tools |
+|---|---|
+| macOS | `brew install nmap lldpd speedtest-cli iperf3 arp-scan` |
+| Windows | Nmap, Npcap, Wireshark |
+| Ubuntu | `sudo apt install nmap lldpd iperf3 tcpdump dnsutils` |
 
 ---
 
-
-
-
-
-## Intune / Company Portal Python on Windows
-
-If Python was installed through Intune or Company Portal, it may not be available as:
-
-```powershell
-python
-py -3
-```
-
-The Windows installer now checks:
-
-- Python Launcher: `py -3`
-- PATH: `python`
-- PATH: `python3`
-- Common Program Files locations
-- Common user AppData Python locations
-- Limited search under Program Files and LocalAppData
-- Manual path entry for `python.exe`
-
-If the installer still cannot find Python, ask IT for the actual path to `python.exe`.
-
-You can also check manually:
-
-```powershell
-where python
-where py
-Get-ChildItem "C:\Program Files" -Filter python.exe -Recurse -ErrorAction SilentlyContinue
-Get-ChildItem "$env:LOCALAPPDATA" -Filter python.exe -Recurse -ErrorAction SilentlyContinue
-```
-
-If Intune installed Python without `venv` or `pip`, ask IT to include:
-
-```text
-venv
-pip
-setuptools
-wheel
-```
-
-in the Python deployment.
-
-## Windows install.bat troubleshooting
-
-If you see:
-
-```text
-The system cannot find the path specified.
-```
-
-during pip or requirements installation, the virtual environment did not build correctly or `.venv\Scripts\python.exe` is missing.
-
-The installer now checks this and stops instead of pretending everything is fine, because apparently batch files learned honesty late in life.
-
-Try:
-
-```powershell
-rmdir /s /q .venv
-install.bat
-```
-
-Also confirm Python works:
-
-```powershell
-py -3 --version
-python --version
-```
-
-If both fail, reinstall Python from python.org and check:
-
-```text
-Add python.exe to PATH
-```
-
-
-# Fixing Common Missing Package Problems
+# 🧠 Troubleshooting Quick Fixes
 
 ## `speedtest-cli: command not found`
-
-The toolkit installs the Python package automatically:
 
 ```bash
 pip install speedtest-cli
 ```
 
-On macOS with Homebrew:
+macOS:
 
 ```bash
 brew install speedtest-cli
 ```
 
-On Ubuntu:
+Ubuntu:
 
 ```bash
 sudo apt install speedtest-cli
-```
-
-If the shell command still fails, run:
-
-```bash
-./install.sh
 ```
 
 ## `venv` missing on Ubuntu
@@ -506,138 +423,11 @@ sudo apt install lldpd
 sudo systemctl enable --now lldpd
 ```
 
-Windows does not include a built-in `lldpctl` equivalent. Use Wireshark/Npcap or vendor tools.
+Windows does not include a built-in `lldpctl` equivalent. Use Wireshark/Npcap or vendor tools, because Windows looked at LLDP visibility and chose mystery.
 
 ---
 
-# Permissions / Setup Help
-
-Inside the toolkit, choose:
-
-```text
-Permissions / Setup Help
-```
-
-This shows platform-specific instructions for:
-
-- macOS Location Services
-- macOS Terminal/iTerm/VS Code permissions
-- Windows Administrator Mode
-- Windows Nmap/Npcap suggestions
-- Ubuntu package installation
-- Linux LLDP service setup
-- Wi-Fi scanning permissions
-
----
-
-# macOS SSID/BSSID Permissions
-
-Newer macOS versions may redact SSID and BSSID as location-sensitive data.
-
-Go to:
-
-```text
-System Settings → Privacy & Security → Location Services
-```
-
-Then:
-
-1. Enable Location Services globally.
-2. Enable Location Services for the terminal app you use:
-   - Terminal
-   - iTerm2
-   - VS Code
-3. Quit and reopen the terminal app.
-4. Run the toolkit again.
-5. Try Administrator Mode if needed.
-
-If macOS itself returns `<redacted>`, the toolkit cannot reveal the value until macOS permissions allow it.
-
----
-
-
-
-# Connection Quality Test
-
-The old ICMP-only latency/jitter test has been replaced with a multi-method **Connection Quality Test**.
-
-This matters because many corporate networks block or rate-limit ICMP ping. The toolkit now measures connection quality using application-friendly methods first.
-
-## Methods
-
-The test can use:
-
-- TCP Connect latency
-- HTTPS request latency
-- DNS lookup latency
-- ICMP ping, when allowed
-- iPerf3, when a server is configured
-
-## Default Auto Mode
-
-Auto mode runs:
-
-```text
-TCP → HTTPS → DNS → ICMP
-```
-
-If `iperf3_server` is configured, it also runs iPerf3.
-
-## Settings
-
-You can change these in `settings.yaml` or the toolkit Settings menu:
-
-```yaml
-connection_quality_host: cloudflare.com
-connection_quality_ip: 1.1.1.1
-connection_quality_port: 443
-connection_quality_url: https://cloudflare.com
-connection_quality_attempts: 10
-connection_quality_timeout_seconds: 3
-connection_quality_preferred_method: auto
-connection_quality_dns_domain: google.com
-connection_quality_dns_server: 1.1.1.1
-iperf3_server: ""
-iperf3_duration_seconds: 10
-```
-
-## Preferred Method Values
-
-```text
-auto
-tcp
-https
-dns
-icmp
-iperf3
-all
-```
-
-## What It Reports
-
-The report includes:
-
-- latency
-- jitter
-- min/average/max response time
-- connection failure rate
-- DNS timing
-- TCP timing
-- TLS timing
-- first-byte timing
-- network health score from 0–100
-
-Example:
-
-```text
-Network Health Score: 94/100
-Rating: Excellent
-Best Available Method: TCP Connect
-```
-
-This is much more useful on corporate networks than yelling at blocked ping packets, although yelling remains emotionally satisfying.
-
-# Current Features
+# 🧾 Current Features
 
 - Useful interface filtering
 - All interface view
@@ -655,8 +445,10 @@ This is much more useful on corporate networks than yelling at blocked ping pack
 - Human-readable subnet scan
 - LLDP switch/port discovery on macOS/Linux
 - Windows LLDP guidance
-- Connection Quality Test with TCP/HTTPS/DNS/ICMP/iPerf support
+- Connection Tests submenu with TCP/HTTPS/DNS/ICMP/iPerf support
+- Health score exclusion settings
 - JSON/CSV/HTML report exports
+- Better HTML command dump formatting
 - Settings menu
 - Clean exit handling
 - Restart in Administrator Mode
@@ -664,8 +456,14 @@ This is much more useful on corporate networks than yelling at blocked ping pack
 
 ---
 
-# Notes
+# 🧯 Notes
 
 Switch and port info is collected from local LLDP/CDP-style neighbor discovery when supported. This does not require SNMP.
 
 PoE info usually cannot be read from a basic USB-C Ethernet adapter directly. It normally comes from LLDP power negotiation or from the switch.
+
+---
+
+## Final Thought
+
+This toolkit exists because opening five terminals, three system panels, two vendor apps, and one browser tab just to answer “is the network okay?” is apparently what civilization calls progress.

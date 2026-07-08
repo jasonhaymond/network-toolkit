@@ -1,3 +1,11 @@
+"""
+Configuration helper for Network Toolkit.
+
+This module owns settings.yaml loading/saving and the Settings menu.
+Keeping this separate prevents every diagnostic module from inventing its own
+tiny configuration kingdom. History has shown tiny kingdoms still start wars.
+"""
+
 import yaml
 from pathlib import Path
 from rich.console import Console
@@ -29,6 +37,12 @@ DEFAULT_CONFIG = {
     "connection_quality_dns_server": "1.1.1.1",
     "iperf3_server": "",
     "iperf3_duration_seconds": 10,
+    "connection_quality_score_include_tcp": True,
+    "connection_quality_score_include_https": True,
+    "connection_quality_score_include_dns": True,
+    "connection_quality_score_include_icmp": False,
+    "connection_quality_score_include_iperf3": True,
+
 
 }
 
@@ -58,6 +72,7 @@ def settings_menu():
         keys = list(config.keys())
         for i, key in enumerate(keys, start=1):
             console.print(f"{i}) {key}: [green]{config[key]}[/green]")
+        console.print("")
         console.print("0) Return")
         choice = Prompt.ask("Selection")
         if choice == "0":

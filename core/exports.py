@@ -1,8 +1,28 @@
+"""
+Report export engine.
+
+The toolkit collects structured dictionaries/lists from each diagnostic module.
+This file turns those results into JSON, CSV, and readable HTML reports.
+
+The HTML renderer tries to preserve command output formatting because raw dumps
+stuffed into table cells are a crime against eyesight.
+"""
+
 import csv
 import html
 import json
 from pathlib import Path
 from datetime import datetime
+
+
+RAW_TEXT_KEYS = {
+    "stdout",
+    "stderr",
+    "raw_output",
+    "command_output",
+    "output",
+    "raw",
+}
 
 
 class ReportSession:
@@ -74,7 +94,7 @@ class ReportSession:
 
         sections = []
         for result in self.results:
-            section = html.escape(result["section"])
+            section = html.escape(pretty_label(result["section"]))
             timestamp = html.escape(result["timestamp"])
             body = render_html_data(result["data"])
             sections.append(
@@ -99,9 +119,13 @@ class ReportSession:
             margin: 32px;
             background: #f6f8fa;
             color: #222;
+            line-height: 1.35;
         }}
         h1 {{
             color: #0b5cad;
+        }}
+        h2 {{
+            margin-top: 0;
         }}
         section {{
             background: white;
@@ -109,11 +133,13 @@ class ReportSession:
             border-radius: 8px;
             padding: 18px;
             margin-bottom: 18px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
         }}
         table {{
             width: 100%;
             border-collapse: collapse;
             margin-top: 10px;
+            table-layout: auto;
         }}
         th, td {{
             border: 1px solid #ddd;
@@ -123,18 +149,35 @@ class ReportSession:
         }}
         th {{
             background: #eef4fb;
+            width: 260px;
         }}
         pre {{
             white-space: pre-wrap;
+            word-break: break-word;
+            overflow-wrap: anywhere;
             background: #111827;
             color: #e5e7eb;
             padding: 12px;
             border-radius: 6px;
             overflow-x: auto;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+            font-size: 13px;
+            line-height: 1.35;
         }}
         .timestamp {{
             color: #666;
             font-size: 0.9em;
+        }}
+        .nested {{
+            margin-left: 0;
+            margin-top: 8px;
+        }}
+        .summary-table th {{
+            width: 220px;
+        }}
+        .empty {{
+            color: #777;
+            font-style: italic;
         }}
     </style>
 </head>
@@ -160,6 +203,10 @@ class ReportSession:
         ])
 
 
+def pretty_label(value):
+    return str(value).replace("_", " ").replace(".", " → ").title()
+
+
 def flatten_dict(data, parent_key=""):
     items = {}
 
@@ -176,26 +223,81 @@ def flatten_dict(data, parent_key=""):
     return items
 
 
+def is_raw_text_key(key):
+    key = str(key).lower()
+    return key in RAW_TEXT_KEYS or key.endswith("_raw") or key.endswith("_output") or "stdout" in key or "stderr" in key
+
+
+def render_value(key, value):
+    if value is None or value == "":
+        return '<span class="empty">(blank)</span>'
+
+    if isinstance(value, (dict, list)):
+        return render_html_data(value)
+
+    text = str(value)
+
+    if is_raw_text_key(key) or "\n" in text or len(text) > 180:
+        return f"<pre>{html.escape(text)}</pre>"
+
+    return html.escape(text)
+
+
+def render_dict_as_table(data):
+    rows = []
+
+    priority_keys = [
+        "score", "rating", "method", "target", "success", "included_in_score",
+        "avg_ms", "jitter_ms", "loss_percent", "notes", "command",
+        "returncode", "stdout", "stderr", "raw_output"
+    ]
+
+    keys = []
+    for key in priority_keys:
+        if key in data:
+            keys.append(key)
+    for key in data:
+        if key not in keys:
+            keys.append(key)
+
+    for key in keys:
+        value = data[key]
+        rows.append(
+            f"<tr><th>{html.escape(pretty_label(key))}</th><td>{render_value(key, value)}</td></tr>"
+        )
+
+    return f'<table class="summary-table">{"".join(rows)}</table>'
+
+
+def render_list_of_dicts(data):
+    if not data:
+        return '<p class="empty">No data.</p>'
+
+    keys = sorted({key for item in data if isinstance(item, dict) for key in item.keys()})
+
+    # If rows contain raw dumps, render each dict as its own block instead of a giant unreadable table.
+    if any(any(is_raw_text_key(k) or isinstance(item.get(k), (dict, list)) for k in item.keys()) for item in data if isinstance(item, dict)):
+        blocks = []
+        for idx, item in enumerate(data, start=1):
+            blocks.append(f"<h3>Item {idx}</h3>{render_dict_as_table(item)}")
+        return "".join(blocks)
+
+    rows = []
+    for item in data:
+        row = "".join(f"<td>{render_value(key, item.get(key, ''))}</td>" for key in keys)
+        rows.append(f"<tr>{row}</tr>")
+
+    header = "".join(f"<th>{html.escape(pretty_label(key))}</th>" for key in keys)
+    return f"<table><thead><tr>{header}</tr></thead><tbody>{''.join(rows)}</tbody></table>"
+
+
 def render_html_data(data):
     if isinstance(data, list):
-        if not data:
-            return "<p>No data.</p>"
-
         if all(isinstance(item, dict) for item in data):
-            keys = sorted({key for item in data for key in item.keys()})
-            rows = []
-            for item in data:
-                row = "".join(f"<td>{html.escape(str(item.get(key, '')))}</td>" for key in keys)
-                rows.append(f"<tr>{row}</tr>")
-            header = "".join(f"<th>{html.escape(str(key))}</th>" for key in keys)
-            return f"<table><thead><tr>{header}</tr></thead><tbody>{''.join(rows)}</tbody></table>"
+            return render_list_of_dicts(data)
+        return "<pre>" + html.escape(json.dumps(data, indent=2)) + "</pre>"
 
     if isinstance(data, dict):
-        rows = []
-        for key, value in flatten_dict(data).items():
-            rows.append(
-                f"<tr><th>{html.escape(str(key))}</th><td>{html.escape(str(value))}</td></tr>"
-            )
-        return f"<table>{''.join(rows)}</table>"
+        return render_dict_as_table(data)
 
     return f"<pre>{html.escape(str(data))}</pre>"

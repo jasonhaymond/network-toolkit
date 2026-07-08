@@ -21,3 +21,9 @@ connection_quality_dns_domain: google.com
 connection_quality_dns_server: 1.1.1.1
 iperf3_server: ""
 iperf3_duration_seconds: 10
+
+connection_quality_score_include_tcp: true
+connection_quality_score_include_https: true
+connection_quality_score_include_dns: true
+connection_quality_score_include_icmp: false
+connection_quality_score_include_iperf3: true
