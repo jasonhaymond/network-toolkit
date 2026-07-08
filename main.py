@@ -127,7 +127,7 @@ def main_menu():
 
         mode = "Administrator" if is_admin() else "Normal"
 
-        table = Table(title=f"Network Toolkit v3.5 — {mode} Mode")
+        table = Table(title=f"Network Toolkit — {mode} Mode")
         table.add_column("#")
         table.add_column("Test / Tool")
 

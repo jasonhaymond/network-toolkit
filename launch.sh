@@ -34,7 +34,15 @@ ensure_venv() {
     ensure_python
     if [ ! -d "$VENV_DIR" ]; then
         echo "Creating virtual environment..."
-        python3 -m venv "$VENV_DIR"
+        python3 -m venv "$VENV_DIR" || {
+            echo ""
+            echo "Failed to create virtual environment."
+            echo "On Ubuntu/Debian, install venv with:"
+            echo "  sudo apt install python3-venv"
+            echo "Then run:"
+            echo "  ./install.sh"
+            exit 1
+        }
     fi
 }
 
@@ -42,7 +50,7 @@ install_requirements() {
     ensure_venv
 
     echo "Checking/updating pip..."
-    "$PYTHON_BIN" -m pip install -q --upgrade pip
+    "$PYTHON_BIN" -m pip install -q --upgrade pip setuptools wheel
 
     if [ -f "requirements.txt" ]; then
         echo "Installing/updating requirements..."

@@ -1,0 +1,148 @@
+
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Network Toolkit Report</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 32px;
+            background: #f6f8fa;
+            color: #222;
+        }
+        h1 {
+            color: #0b5cad;
+        }
+        section {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 18px;
+            margin-bottom: 18px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+            vertical-align: top;
+        }
+        th {
+            background: #eef4fb;
+        }
+        pre {
+            white-space: pre-wrap;
+            background: #111827;
+            color: #e5e7eb;
+            padding: 12px;
+            border-radius: 6px;
+            overflow-x: auto;
+        }
+        .timestamp {
+            color: #666;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <h1>Network Toolkit Report</h1>
+    <p>Started: 2026-07-08T11:27:57</p>
+    <p>Exported: 2026-07-08T11:28:22</p>
+    
+                <section>
+                    <h2>advanced_wifi_diagnostics</h2>
+                    <p class="timestamp">2026-07-08T11:28:14</p>
+                    <table><tr><th>collector</th><td>Linux advanced Wi-Fi diagnostics</td></tr><tr><th>results.nmcli_device.command</th><td>nmcli device status</td></tr><tr><th>results.nmcli_device.returncode</th><td>0</td></tr><tr><th>results.nmcli_device.stdout</th><td>DEVICE          TYPE      STATE         CONNECTION 
+wlp5s0          wifi      connected     Internal   
+p2p-dev-wlp5s0  wifi-p2p  disconnected  --         
+enp4s0          ethernet  unavailable   --         
+lo              loopback  unmanaged     --</td></tr><tr><th>results.nmcli_device.stderr</th><td></td></tr><tr><th>results.nmcli_wifi.command</th><td>nmcli dev wifi list</td></tr><tr><th>results.nmcli_wifi.returncode</th><td>0</td></tr><tr><th>results.nmcli_wifi.stdout</th><td>IN-USE  BSSID              SSID                 MODE   CHAN  RATE        SIGNAL  BARS  SECURITY    
+        80:2A:A8:0B:EA:AC  Internal             Infra  6     270 Mbit/s  89      ▂▄▆█  WPA2        
+        82:2A:A8:0B:EA:AC  Guest                Infra  6     270 Mbit/s  89      ▂▄▆█  --          
+        92:2A:A8:0B:EA:AC  --                   Infra  6     270 Mbit/s  84      ▂▄▆█  WPA2        
+        F4:92:BF:6B:4D:1B  Guest                Infra  149   405 Mbit/s  80      ▂▄▆_  --          
+*       06:92:BF:6B:4D:1B  Internal             Infra  149   405 Mbit/s  80      ▂▄▆_  WPA2        
+        F4:92:BF:6A:4D:1B  Guest                Infra  6     195 Mbit/s  77      ▂▄▆_  --          
+        FA:92:BF:6A:4D:1B  Lab                  Infra  6     195 Mbit/s  75      ▂▄▆_  WPA2        
+        02:92:BF:6A:4D:1B  Internal             Infra  6     195 Mbit/s  75      ▂▄▆_  WPA2        
+        FE:92:BF:6A:4D:1B  --                   Infra  6     195 Mbit/s  75      ▂▄▆_  WPA2        
+        20:F1:20:65:60:60  dsm-firmenich        Infra  6     130 Mbit/s  75      ▂▄▆_  WPA2 802.1X 
+        20:F1:20:65:60:62  dsm-firmenich-1076   Infra  6     130 Mbit/s  75      ▂▄▆_  WPA2 WPA3   
+        20:F1:20:65:60:61  dsm-firmenich_Guest  Infra  6     130 Mbit/s  75      ▂▄▆_  --          
+        20:F1:20:65:60:6F  dsm-firmenich        Infra  161   540 Mbit/s  74      ▂▄▆_  WPA2 802.1X 
+        20:F1:20:65:60:6D  dsm-firmenich-1076   Infra  161   540 Mbit/s  74      ▂▄▆_  WPA2 WPA3   
+        20:F1:20:65:60:6E  dsm-firmenich_Guest  Infra  161   540 Mbit/s  74      ▂▄▆_  --          
+        78:8A:20:4C:65:02  Internal             Infra  11    195 Mbit/s  69      ▂▄▆_  WPA2        
+        20:F1:20:65:5C:AF  dsm-firmenich        Infra  124   540 Mbit/s  69      ▂▄▆_  WPA2 802.1X 
+        20:F1:20:65:5C:AD  dsm-firmenich-1076   Infra  124   540 Mbit/s  69      ▂▄▆_  WPA2 WPA3   
+        20:F1:20:65:5C:AE  dsm-firmenich_Guest  Infra  124   540 Mbit/s  69      ▂▄▆_  --          
+        82:8A:20:4C:65:02  --                   Infra  11    195 Mbit/s  67      ▂▄▆_  WPA2        
+        7E:8A:20:4C:65:02  Guest                Infra  11    195 Mbit/s  65      ▂▄▆_  --          
+        20:F1:20:65:6F:21  dsm-firmenich_Guest  Infra  11    130 Mbit/s  62      ▂▄▆_  --          
+        20:F1:20:65:6F:20  dsm-firmenich        Infra  11    130 Mbit/s  60      ▂▄▆_  WPA2 802.1X 
+        20:F1:20:65:6F:22  dsm-firmenich-1076   Infra  11    130 Mbit/s  60      ▂▄▆_  WPA2 WPA3   
+        20:F1:20:65:6F:2F  dsm-firmenich        Infra  112   540 Mbit/s  57      ▂▄▆_  WPA2 802.1X 
+        20:F1:20:65:6F:2D  dsm-firmenich-1076   Infra  112   540 Mbit/s  57      ▂▄▆_  WPA2 WPA3   
+        20:F1:20:65:6F:2E  dsm-firmenich_Guest  Infra  112   540 Mbit/s  57      ▂▄▆_  --          
+        F0:9F:C2:3A:D1:FC  Internal             Infra  1     195 Mbit/s  50      ▂▄__  WPA2        
+        F6:9F:C2:3A:D1:FC  Guest                Infra  1     195 Mbit/s  50      ▂▄__  --          
+        FA:9F:C2:3A:D1:FC  --                   Infra  1     195 Mbit/s  49      ▂▄__  WPA2        
+        20:F1:20:65:78:EE  dsm-firmenich_Guest  Infra  52    540 Mbit/s  45      ▂▄__  --          
+        B4:FB:E4:C1:04:38  Internal             Infra  6     195 Mbit/s  44      ▂▄__  WPA2        
+        20:F1:20:65:78:E2  dsm-firmenich-1076   Infra  11    130 Mbit/s  44      ▂▄__  WPA2 WPA3   
+        20:F1:20:65:78:EF  dsm-firmenich        Infra  52    540 Mbit/s  44      ▂▄__  WPA2 802.1X 
+        20:F1:20:65:78:ED  dsm-firmenich-1076   Infra  52    540 Mbit/s  44      ▂▄__  WPA2 WPA3   
+        20:F1:20:65:5C:A2  dsm-firmenich-1076   Infra  1     130 Mbit/s  42      ▂▄__  WPA2 WPA3   
+        20:F1:20:65:5C:A0  dsm-firmenich        Infra  1     130 Mbit/s  42      ▂▄__  WPA2 802.1X 
+        20:F1:20:65:5C:A1  dsm-firmenich_Guest  Infra  1     130 Mbit/s  42      ▂▄__  --          
+        BE:FB:E4:C1:04:38  --                   Infra  6     195 Mbit/s  42      ▂▄__  WPA2        
+        BA:FB:E4:C1:04:38  Guest                Infra  6     195 Mbit/s  42      ▂▄__  --          
+        20:F1:20:65:78:E0  dsm-firmenich        Infra  11    130 Mbit/s  40      ▂▄__  WPA2 802.1X 
+        20:F1:20:65:78:E1  dsm-firmenich_Guest  Infra  11    130 Mbit/s  40      ▂▄__  --          
+        2C:65:8D:AF:6E:41  dsm-firmenich_Guest  Infra  1     260 Mbit/s  37      ▂▄__  --          
+        2C:65:8D:AF:6E:40  dsm-firmenich        Infra  1     260 Mbit/s  35      ▂▄__  WPA2 802.1X 
+        2C:65:8D:AF:6E:42  dsm-firmenich-1076   Infra  1     260 Mbit/s  35      ▂▄__  WPA2 WPA3   
+        2C:65:8D:AF:6E:4F  dsm-firmenich        Infra  36    540 Mbit/s  34      ▂▄__  WPA2 802.1X 
+        2C:65:8D:AF:6E:4D  dsm-firmenich-1076   Infra  36    540 Mbit/s  34      ▂▄__  WPA2 WPA3   
+        2C:65:8D:AF:6E:4E  dsm-firmenich_Guest  Infra  36    540 Mbit/s  32      ▂▄__  --          
+        2C:65:8D:AF:65:0D  dsm-firmenich-1076   Infra  48    540 Mbit/s  29      ▂___  WPA2 WPA3   
+        2C:65:8D:AF:65:0F  dsm-firmenich        Infra  48    540 Mbit/s  29      ▂___  WPA2 802.1X 
+        2C:65:8D:AF:65:0E  dsm-firmenich_Guest  Infra  48    540 Mbit/s  29      ▂___  --          
+        2C:65:8D:AF:65:01  dsm-firmenich_Guest  Infra  6     260 Mbit/s  27      ▂___  --          
+        2C:65:8D:AF:94:80  dsm-firmenich        Infra  1     260 Mbit/s  25      ▂___  WPA2 802.1X 
+        2C:65:8D:AF:94:82  dsm-firmenich-1076   Infra  1     260 Mbit/s  25      ▂___  WPA2 WPA3   
+        2C:65:8D:AF:94:81  dsm-firmenich_Guest  Infra  1     260 Mbit/s  25      ▂___  --          
+        2C:65:8D:AF:65:00  dsm-firmenich        Infra  6     260 Mbit/s  25      ▂___  WPA2 802.1X 
+        2C:65:8D:AF:65:02  dsm-firmenich-1076   Infra  6     260 Mbit/s  25      ▂___  WPA2 WPA3</td></tr><tr><th>results.nmcli_wifi.stderr</th><td></td></tr><tr><th>results.iw_dev.command</th><td>iw dev</td></tr><tr><th>results.iw_dev.returncode</th><td>0</td></tr><tr><th>results.iw_dev.stdout</th><td>phy#0
+	Unnamed/non-netdev interface
+		wdev 0x2
+		addr a4:c3:f0:82:ff:f6
+		type P2P-device
+	Interface wlp5s0
+		ifindex 3
+		wdev 0x1
+		addr a4:c3:f0:82:ff:f5
+		ssid Internal
+		type managed
+		channel 149 (5745 MHz), width: 40 MHz, center1: 5755 MHz
+		txpower 22.00 dBm
+		multicast TXQ:
+			qsz-byt	qsz-pkt	flows	drops	marks	overlmt	hashcol	tx-bytes	tx-packets
+			0	0	0	0	0	0	0	0		0</td></tr><tr><th>results.iw_dev.stderr</th><td></td></tr><tr><th>results.rfkill.command</th><td>rfkill list</td></tr><tr><th>results.rfkill.returncode</th><td>0</td></tr><tr><th>results.rfkill.stdout</th><td>0: tpacpi_bluetooth_sw: Bluetooth
+	Soft blocked: no
+	Hard blocked: no
+1: hci0: Bluetooth
+	Soft blocked: no
+	Hard blocked: no
+2: phy0: Wireless LAN
+	Soft blocked: no
+	Hard blocked: no</td></tr><tr><th>results.rfkill.stderr</th><td></td></tr></table>
+                </section>
+                
+</body>
+</html>
