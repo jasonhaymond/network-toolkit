@@ -178,8 +178,7 @@ def dns_latency_test(domain, dns_server=None, attempts=10, timeout=3):
                     timeout=process_timeout,
                 )
 
-                combined_output = ((completed.stdout or "") + "
-" + (completed.stderr or "")).strip()
+                combined_output = ((completed.stdout or "") + "\\n" + (completed.stderr or "")).strip()
                 output_lower = combined_output.lower()
 
                 # nslookup output varies by OS. Treat common positive signs as success.
