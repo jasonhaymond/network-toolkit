@@ -1,13 +1,14 @@
 from __future__ import annotations
-import subprocess
 import requests
 from rich.console import Console
 from core.config import load_settings
+from core.interrupts import run_process
 console = Console()
 
 def ping_test() -> None:
     target = load_settings().get("ping_target", "8.8.8.8")
-    subprocess.run(["ping", "-n" if subprocess.os.name == "nt" else "-c", "4", target])
+    import os
+    run_process(["ping", "-n" if os.name == "nt" else "-c", "4", target], cancel_label="ping test")
 
 def public_ip() -> None:
     try:

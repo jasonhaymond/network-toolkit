@@ -31,6 +31,7 @@ from typing import Iterable
 import psutil
 from rich.console import Console
 from rich.table import Table
+from core.interrupts import prompt_input, run_process, OperationCancelled, cancel_message
 
 console = Console()
 SYSTEM = platform.system()  # Windows, Darwin, Linux
@@ -261,8 +262,10 @@ def python_package_exists(package: PythonPackage) -> bool:
 
 def _run(command: list[str]) -> bool:
     try:
-        result = subprocess.run(command)
-        return result.returncode == 0
+        result = run_process(command, cancel_label="dependency install")
+        return bool(result and result.returncode == 0)
+    except OperationCancelled:
+        raise
     except Exception as exc:
         console.print(f"[red]Command failed:[/red] {' '.join(command)}")
         console.print(str(exc))
@@ -275,8 +278,8 @@ def _run(command: list[str]) -> bool:
 
 def install_python_package(pip_name: str) -> bool:
     console.print(f"[cyan]Installing Python package:[/cyan] {pip_name}")
-    result = subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", pip_name])
-    return result.returncode == 0
+    result = run_process([sys.executable, "-m", "pip", "install", "--upgrade", pip_name], cancel_label="Python package install")
+    return bool(result and result.returncode == 0)
 
 
 def install_python_requirements() -> bool:
@@ -285,8 +288,8 @@ def install_python_requirements() -> bool:
         console.print("[yellow]requirements.txt was not found.[/yellow]")
         return False
     console.print("[cyan]Installing/updating Python requirements...[/cyan]")
-    result = subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "-r", str(requirements)])
-    return result.returncode == 0
+    result = run_process([sys.executable, "-m", "pip", "install", "--upgrade", "-r", str(requirements)], cancel_label="Python requirements install")
+    return bool(result and result.returncode == 0)
 
 
 def ensure_python_package(import_or_pip_name: str, pip_name: str | None = None) -> bool:
@@ -300,7 +303,7 @@ def ensure_python_package(import_or_pip_name: str, pip_name: str | None = None) 
     if python_package_exists(package):
         return True
 
-    answer = input(f"Install Python package {package.pip_name}? (Y/n): ").strip().lower()
+    answer = prompt_input(f"Install Python package {package.pip_name}? (Y/n): ").strip().lower()
     if answer not in ("", "y", "yes"):
         return False
 
@@ -402,7 +405,7 @@ def ensure_dependency(name: str) -> bool:
         return False
 
     console.print(f"\n[yellow]{display_name} is not installed or not in PATH.[/yellow]")
-    answer = input("Install automatically now? (Y/n): ").strip().lower()
+    answer = prompt_input("Install automatically now? (Y/n): ").strip().lower()
     if answer in ("", "y", "yes"):
         return install_dependency(display_name)
     return False
@@ -457,20 +460,55 @@ def print_dependency_status() -> None:
     console.print(table)
 
 
+def print_missing_dependency_status(
+    missing_python: list[PythonPackage] | None = None,
+    missing_commands: list[CommandDependency] | None = None,
+) -> None:
+    """Show only missing supported dependencies.
+
+    Startup should be quiet when everything is fine. Civilization advances
+    one removed pointless "press Enter" prompt at a time.
+    """
+    if missing_python is None:
+        missing_python = [p for p in PYTHON_PACKAGES.values() if not python_package_exists(p)]
+
+    if missing_commands is None:
+        missing_commands = [
+            d for d in COMMAND_DEPENDENCIES.values()
+            if SYSTEM in d.platforms and not command_exists(d.key)
+        ]
+
+    if not missing_python and not missing_commands:
+        return
+
+    table = Table(title="Missing Supported Dependencies")
+    table.add_column("Dependency")
+    table.add_column("Type")
+    table.add_column("Use")
+
+    for package in missing_python:
+        table.add_row(package.pip_name, "Python", package.description)
+
+    for dep in missing_commands:
+        table.add_row(dep.key, "External", dep.description)
+
+    console.print(table)
+
+
 def startup_dependency_audit(auto_install_mode: str = "ask") -> None:
     """
-    Run one clean startup dependency check.
+    Run a quiet startup dependency check.
+
+    Behavior:
+        - If nothing supported is missing, print nothing and continue to the menu.
+        - If anything is missing, show only the missing list.
+        - Do not require pressing Enter after the check.
 
     auto_install_mode:
         ask    - ask before installing
         always - install without asking
-        never  - only report
+        never  - only report missing dependencies
     """
-    console.print("\n[cyan]Network Toolkit Startup Check[/cyan]")
-    console.print("Checking Python packages and external tools. The least glamorous part of civilization.\n")
-
-    print_dependency_status()
-
     missing_python = [p for p in PYTHON_PACKAGES.values() if not python_package_exists(p)]
     missing_commands = [
         d for d in COMMAND_DEPENDENCIES.values()
@@ -478,17 +516,18 @@ def startup_dependency_audit(auto_install_mode: str = "ask") -> None:
     ]
 
     if not missing_python and not missing_commands:
-        console.print("[green]All known dependencies are available.[/green]")
         return
 
-    console.print(f"\n[yellow]{len(missing_python) + len(missing_commands)} supported dependencies are missing.[/yellow]")
+    console.print("\n[cyan]Network Toolkit Startup Check[/cyan]")
+    console.print(f"[yellow]{len(missing_python) + len(missing_commands)} supported dependencies are missing.[/yellow]\n")
+    print_missing_dependency_status(missing_python, missing_commands)
 
     if auto_install_mode == "never":
         return
 
     install = auto_install_mode == "always"
     if auto_install_mode == "ask":
-        answer = input("Install/update missing supported dependencies now? (Y/n): ").strip().lower()
+        answer = prompt_input("Install/update missing supported dependencies now? (Y/n): ").strip().lower()
         install = answer in ("", "y", "yes")
 
     if not install:
@@ -504,8 +543,17 @@ def startup_dependency_audit(auto_install_mode: str = "ask") -> None:
     for dep in missing_commands:
         install_dependency(dep.key)
 
-    console.print("\n[cyan]Rechecking dependency status...[/cyan]")
-    print_dependency_status()
+    remaining_python = [p for p in PYTHON_PACKAGES.values() if not python_package_exists(p)]
+    remaining_commands = [
+        d for d in COMMAND_DEPENDENCIES.values()
+        if SYSTEM in d.platforms and not command_exists(d.key)
+    ]
+
+    if remaining_python or remaining_commands:
+        console.print("\n[yellow]Some dependencies are still missing after install attempts.[/yellow]")
+        print_missing_dependency_status(remaining_python, remaining_commands)
+    else:
+        console.print("\n[green]Dependency check complete. All supported dependencies are available.[/green]")
 
 
 # ---------------------------------------------------------------------------

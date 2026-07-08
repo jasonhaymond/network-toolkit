@@ -1,26 +1,25 @@
 from __future__ import annotations
-import subprocess
 import platform
 from rich.console import Console
+from core.interrupts import run_process
 
 console = Console()
 
+
 def run_command(command: list[str], timeout: int | None = 30) -> tuple[int, str, str]:
-    try:
-        result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
-        return result.returncode, result.stdout.strip(), result.stderr.strip()
-    except FileNotFoundError as e:
-        return 127, "", str(e)
-    except subprocess.TimeoutExpired:
-        return 124, "", "Command timed out"
-    except Exception as e:
-        return 1, "", str(e)
+    result = run_process(command, capture_output=True, timeout=timeout)
+    if result is None:
+        return 1, "", "Cancelled"
+    return result.returncode, (result.stdout or "").strip(), (result.stderr or "").strip()
+
 
 def is_windows() -> bool:
     return platform.system() == "Windows"
 
+
 def is_macos() -> bool:
     return platform.system() == "Darwin"
+
 
 def is_linux() -> bool:
     return platform.system() == "Linux"
