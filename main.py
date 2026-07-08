@@ -18,6 +18,7 @@ from modules.internet import internet_test, speed_test
 from modules.wifi import wifi_info, wifi_scan, advanced_wifi_diagnostics
 from modules.scanning import subnet_scan
 from modules.monitoring import latency_monitor
+from modules.connection_quality import connection_quality_test
 from modules.switch import switch_port_info
 from modules.permissions import show_permissions_help
 
@@ -143,7 +144,7 @@ def main_menu():
             "Advanced Wi-Fi Diagnostics",
             "Subnet Scan",
             "Switch + Port Info",
-            "Latency / Jitter Monitor",
+            "Connection Quality Test",
             "Restart in Administrator Mode",
             "Permissions / Setup Help",
             "Export Reports",
@@ -183,7 +184,7 @@ def main_menu():
         elif choice == "11":
             run_admin_required(report, "switch_port_info", switch_port_info)
         elif choice == "12":
-            run_and_collect(report, "latency_jitter_monitor", latency_monitor, config)
+            run_and_collect(report, "connection_quality_test", connection_quality_test, config)
         elif choice == "13":
             restart_in_admin_mode()
         elif choice == "14":

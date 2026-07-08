@@ -18,6 +18,18 @@ DEFAULT_CONFIG = {
     "hide_unhelpful_interfaces": True,
     "show_sensitive_wifi_identifiers": True,
     "wifi_collector_priority": "corewlan",
+    "connection_quality_host": "cloudflare.com",
+    "connection_quality_ip": "1.1.1.1",
+    "connection_quality_port": 443,
+    "connection_quality_url": "https://cloudflare.com",
+    "connection_quality_attempts": 10,
+    "connection_quality_timeout_seconds": 3,
+    "connection_quality_preferred_method": "auto",
+    "connection_quality_dns_domain": "google.com",
+    "connection_quality_dns_server": "1.1.1.1",
+    "iperf3_server": "",
+    "iperf3_duration_seconds": 10,
+
 }
 
 

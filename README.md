@@ -71,6 +71,37 @@ For best results on Windows, run PowerShell or Windows Terminal as Administrator
 
 ---
 
+
+
+# Launcher / Installer Structure
+
+The root launcher files are intentionally small:
+
+```text
+launch.sh
+launch.command
+launch.bat
+install.sh
+install.bat
+```
+
+They delegate to shared platform helpers:
+
+```text
+scripts/
+├── unix/
+│   ├── common.sh
+│   ├── install_unix.sh
+│   └── launch_unix.sh
+└── windows/
+    ├── common.bat
+    ├── detect_python.bat
+    ├── install_windows.bat
+    └── launch_windows.bat
+```
+
+This keeps duplicated logic out of the root scripts. Updating Python detection, venv creation, dependency installs, or launch behavior now happens in one shared helper per platform, because maintaining the same bug in four places is a hobby best left to printer drivers.
+
 # Install Scripts
 
 ## macOS / Linux
@@ -328,6 +359,84 @@ sudo .venv/bin/python main.py
 
 ---
 
+
+
+
+
+## Intune / Company Portal Python on Windows
+
+If Python was installed through Intune or Company Portal, it may not be available as:
+
+```powershell
+python
+py -3
+```
+
+The Windows installer now checks:
+
+- Python Launcher: `py -3`
+- PATH: `python`
+- PATH: `python3`
+- Common Program Files locations
+- Common user AppData Python locations
+- Limited search under Program Files and LocalAppData
+- Manual path entry for `python.exe`
+
+If the installer still cannot find Python, ask IT for the actual path to `python.exe`.
+
+You can also check manually:
+
+```powershell
+where python
+where py
+Get-ChildItem "C:\Program Files" -Filter python.exe -Recurse -ErrorAction SilentlyContinue
+Get-ChildItem "$env:LOCALAPPDATA" -Filter python.exe -Recurse -ErrorAction SilentlyContinue
+```
+
+If Intune installed Python without `venv` or `pip`, ask IT to include:
+
+```text
+venv
+pip
+setuptools
+wheel
+```
+
+in the Python deployment.
+
+## Windows install.bat troubleshooting
+
+If you see:
+
+```text
+The system cannot find the path specified.
+```
+
+during pip or requirements installation, the virtual environment did not build correctly or `.venv\Scripts\python.exe` is missing.
+
+The installer now checks this and stops instead of pretending everything is fine, because apparently batch files learned honesty late in life.
+
+Try:
+
+```powershell
+rmdir /s /q .venv
+install.bat
+```
+
+Also confirm Python works:
+
+```powershell
+py -3 --version
+python --version
+```
+
+If both fail, reinstall Python from python.org and check:
+
+```text
+Add python.exe to PATH
+```
+
+
 # Fixing Common Missing Package Problems
 
 ## `speedtest-cli: command not found`
@@ -446,6 +555,88 @@ If macOS itself returns `<redacted>`, the toolkit cannot reveal the value until 
 
 ---
 
+
+
+# Connection Quality Test
+
+The old ICMP-only latency/jitter test has been replaced with a multi-method **Connection Quality Test**.
+
+This matters because many corporate networks block or rate-limit ICMP ping. The toolkit now measures connection quality using application-friendly methods first.
+
+## Methods
+
+The test can use:
+
+- TCP Connect latency
+- HTTPS request latency
+- DNS lookup latency
+- ICMP ping, when allowed
+- iPerf3, when a server is configured
+
+## Default Auto Mode
+
+Auto mode runs:
+
+```text
+TCP → HTTPS → DNS → ICMP
+```
+
+If `iperf3_server` is configured, it also runs iPerf3.
+
+## Settings
+
+You can change these in `settings.yaml` or the toolkit Settings menu:
+
+```yaml
+connection_quality_host: cloudflare.com
+connection_quality_ip: 1.1.1.1
+connection_quality_port: 443
+connection_quality_url: https://cloudflare.com
+connection_quality_attempts: 10
+connection_quality_timeout_seconds: 3
+connection_quality_preferred_method: auto
+connection_quality_dns_domain: google.com
+connection_quality_dns_server: 1.1.1.1
+iperf3_server: ""
+iperf3_duration_seconds: 10
+```
+
+## Preferred Method Values
+
+```text
+auto
+tcp
+https
+dns
+icmp
+iperf3
+all
+```
+
+## What It Reports
+
+The report includes:
+
+- latency
+- jitter
+- min/average/max response time
+- connection failure rate
+- DNS timing
+- TCP timing
+- TLS timing
+- first-byte timing
+- network health score from 0–100
+
+Example:
+
+```text
+Network Health Score: 94/100
+Rating: Excellent
+Best Available Method: TCP Connect
+```
+
+This is much more useful on corporate networks than yelling at blocked ping packets, although yelling remains emotionally satisfying.
+
 # Current Features
 
 - Useful interface filtering
@@ -464,7 +655,7 @@ If macOS itself returns `<redacted>`, the toolkit cannot reveal the value until 
 - Human-readable subnet scan
 - LLDP switch/port discovery on macOS/Linux
 - Windows LLDP guidance
-- Latency/jitter monitor
+- Connection Quality Test with TCP/HTTPS/DNS/ICMP/iPerf support
 - JSON/CSV/HTML report exports
 - Settings menu
 - Clean exit handling
