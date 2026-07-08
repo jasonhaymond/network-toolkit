@@ -20,6 +20,11 @@ import subprocess
 import time
 from urllib.parse import urlparse
 
+try:
+    import dns.resolver
+except Exception:
+    dns = None
+
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
@@ -137,108 +142,111 @@ def tcp_connect_test(host, port, attempts=10, timeout=3):
 
 
 def dns_latency_test(domain, dns_server=None, attempts=10, timeout=3):
-    """Measure DNS lookup latency with robust fallbacks.
+    """Measure true DNS query latency.
 
-    Previous behavior used a single nslookup subprocess with the same short timeout
-    used for network sockets. That can fail on corporate Windows machines because
-    nslookup startup, policy inspection, DNS suffix handling, or security tooling can
-    take longer than 3 seconds. Humans then run nslookup manually and it works,
-    making the script look like it was assembled by raccoons. Not ideal.
+    This intentionally avoids timing nslookup as the primary measurement.
 
-    New behavior:
-    1. Use the OS resolver via socket.getaddrinfo() first.
-    2. If a DNS server is configured, also try nslookup with a safer timeout.
-    3. Count the attempt successful if either method succeeds.
+    Why? A subprocess call to nslookup includes:
+    - process startup time
+    - endpoint security inspection
+    - shell/path lookup
+    - Windows DNS client behavior
+    - DNS suffix/search behavior
+    - output parsing time
+    - occasional timeout weirdness
+
+    That is useful for "does nslookup work?" but terrible for "how fast was the DNS
+    lookup?" Humans discovered this the hard way, as usual.
+
+    Primary method:
+    - dnspython direct DNS query to the configured DNS server
+
+    Fallback method:
+    - Python system resolver via socket.getaddrinfo()
+
+    Debug method:
+    - nslookup can still be added to output later, but it should not drive latency.
     """
     samples = []
-    process_timeout = max(float(timeout) + 5, 8)
+    timeout = float(timeout)
 
     for i in range(1, attempts + 1):
         errors = []
-        start = time.perf_counter()
-        success = False
         resolver_used = ""
 
-        # First try the system resolver. This mirrors what most apps actually use.
-        try:
-            socket.getaddrinfo(domain, None)
-            success = True
-            resolver_used = "system resolver"
-        except Exception as e:
-            errors.append(f"system resolver: {e}")
-
-        # If a DNS server is configured, try nslookup too. This gives direct-server
-        # visibility without making the whole test fail when nslookup is weird.
-        if dns_server:
+        # Best measurement: direct DNS query using dnspython.
+        if dns_server and dns is not None:
             try:
-                completed = subprocess.run(
-                    ["nslookup", domain, dns_server],
-                    capture_output=True,
-                    text=True,
-                    timeout=process_timeout,
-                )
+                resolver = dns.resolver.Resolver(configure=False)
+                resolver.nameservers = [dns_server]
+                resolver.timeout = timeout
+                resolver.lifetime = timeout
 
-                combined_output = ((completed.stdout or "") + "\\n" + (completed.stderr or "")).strip()
-                output_lower = combined_output.lower()
+                start = time.perf_counter()
+                answer = resolver.resolve(domain, "A")
+                latency = (time.perf_counter() - start) * 1000
 
-                # nslookup output varies by OS. Treat common positive signs as success.
-                positive_markers = [
-                    "name:",
-                    "address:",
-                    "addresses:",
-                    "non-authoritative answer",
-                ]
-                negative_markers = [
-                    "can't find",
-                    "server failed",
-                    "timed out",
-                    "no response",
-                    "non-existent domain",
-                    "can't reach",
-                ]
-
-                has_positive = any(marker in output_lower for marker in positive_markers)
-                has_negative = any(marker in output_lower for marker in negative_markers)
-
-                if completed.returncode == 0 or (has_positive and not has_negative):
-                    success = True
-                    resolver_used = f"nslookup via {dns_server}" if not resolver_used else f"{resolver_used} + nslookup via {dns_server}"
-                else:
-                    errors.append(f"nslookup: {combined_output or 'no output'}")
+                samples.append({
+                    "sample": i,
+                    "success": True,
+                    "latency_ms": round(latency, 2),
+                    "resolver_used": f"dnspython direct query via {dns_server}",
+                    "answers": [r.to_text() for r in answer],
+                    "error": "",
+                })
+                continue
             except Exception as e:
-                errors.append(f"nslookup: {e}")
+                errors.append(f"dnspython direct query: {e}")
 
-        latency = (time.perf_counter() - start) * 1000
+        # Fallback: system resolver. This measures what apps normally experience,
+        # but it may include OS cache, suffix search, and local resolver behavior.
+        try:
+            start = time.perf_counter()
+            results = socket.getaddrinfo(domain, None)
+            latency = (time.perf_counter() - start) * 1000
 
-        if success:
+            addresses = sorted({
+                item[4][0]
+                for item in results
+                if item and len(item) >= 5 and item[4]
+            })
+
             samples.append({
                 "sample": i,
                 "success": True,
                 "latency_ms": round(latency, 2),
-                "resolver_used": resolver_used,
+                "resolver_used": "system resolver fallback",
+                "answers": addresses,
                 "error": "",
             })
-        else:
-            samples.append({
-                "sample": i,
-                "success": False,
-                "latency_ms": None,
-                "resolver_used": "",
-                "error": " | ".join(errors),
-            })
+            continue
+        except Exception as e:
+            errors.append(f"system resolver fallback: {e}")
 
-    target = f"{domain} via system resolver"
+        samples.append({
+            "sample": i,
+            "success": False,
+            "latency_ms": None,
+            "resolver_used": "",
+            "answers": [],
+            "error": " | ".join(errors),
+        })
+
+    target = f"{domain}"
     if dns_server:
-        target += f" + {dns_server}"
+        target += f" via {dns_server}"
 
     result = summarize_samples(samples)
     result.update({
         "method": "DNS Lookup",
         "target": target,
         "notes": (
-            "Measures DNS resolution time. Uses system resolver first and nslookup as "
-            "a direct-server fallback so corporate DNS/security delay does not cause false failures."
+            "Measures true DNS query latency using dnspython when available. "
+            "Falls back to the OS resolver if direct DNS is unavailable. "
+            "Does not time nslookup subprocess startup as DNS latency."
         ),
+        "measurement_type": "direct_dns_query" if dns_server and dns is not None else "system_resolver",
+        "dnspython_available": dns is not None,
     })
     return result
 

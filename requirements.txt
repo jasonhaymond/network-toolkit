@@ -8,3 +8,4 @@ setuptools
 wheel
 pyobjc-framework-CoreWLAN; sys_platform == "darwin"
 pyobjc-framework-CoreLocation; sys_platform == "darwin"
+dnspython

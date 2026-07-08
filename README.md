@@ -170,6 +170,26 @@ Why? Because many corporate networks block ICMP ping. The network may be fine, b
 
 #
 
+
+
+## True DNS Lookup Timing
+
+The DNS connection test now measures actual DNS query time instead of timing the `nslookup` process.
+
+Why this matters:
+
+```text
+nslookup timing = process startup + endpoint security + resolver behavior + output parsing + DNS lookup
+true DNS timing = DNS query/response time
+```
+
+The toolkit now uses:
+
+1. `dnspython` direct query to the configured DNS server
+2. system resolver fallback if direct DNS is unavailable
+
+This means the DNS latency result should be much closer to what you expect when manually running a fast lookup, instead of showing an 8-second average because the subprocess wandered through corporate security theater before doing its job.
+
 ## DNS Connection Test Fix
 
 The DNS connection-quality test now uses a safer two-step method:
