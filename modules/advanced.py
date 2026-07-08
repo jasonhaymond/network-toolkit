@@ -2,7 +2,7 @@ from __future__ import annotations
 import subprocess, time
 from rich.console import Console
 from core.config import load_settings
-from core.dependencies import ensure_dependency
+from core.dependencies import ensure_dependency, resolve_command
 console = Console()
 
 def iperf_client() -> None:
@@ -10,14 +10,14 @@ def iperf_client() -> None:
         return
     server = input("iperf3 server IP/host: ").strip()
     if server:
-        subprocess.run(["iperf3", "-c", server])
+        subprocess.run([resolve_command("iperf3") or "iperf3", "-c", server])
 
 def packet_capture() -> None:
     if not ensure_dependency("tcpdump"):
         return
     iface = input("Interface name: ").strip()
     if iface:
-        subprocess.run(["tcpdump", "-i", iface])
+        subprocess.run([resolve_command("tcpdump") or "tcpdump", "-i", iface])
 
 def latency_monitor() -> None:
     target = load_settings().get("ping_target", "8.8.8.8")

@@ -1,7 +1,7 @@
 from __future__ import annotations
 import platform
 from rich.console import Console
-from core.dependencies import ensure_dependency
+from core.dependencies import ensure_dependency, resolve_command
 from core.utils import run_command
 console = Console()
 
@@ -9,7 +9,7 @@ def switch_port_info() -> None:
     system = platform.system()
     if system in ("Darwin", "Linux"):
         if ensure_dependency("lldpctl"):
-            code, out, err = run_command(["lldpctl", "-f", "keyvalue"], timeout=15)
+            code, out, err = run_command([resolve_command("lldpctl") or "lldpctl", "-f", "keyvalue"], timeout=15)
             console.print(out or err)
         else:
             console.print("[yellow]LLDP unavailable. Enable LLDP on switches and install lldpd/lldpctl.[/yellow]")

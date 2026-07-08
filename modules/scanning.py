@@ -1,6 +1,6 @@
 from __future__ import annotations
 import subprocess
-from core.dependencies import ensure_dependency, get_dynamic_subnet
+from core.dependencies import ensure_dependency, get_dynamic_subnet, resolve_command
 from core.config import load_settings
 from rich.console import Console
 console = Console()
@@ -15,7 +15,7 @@ def subnet_scan() -> None:
         return
     default = _subnet_from_settings()
     subnet = input(f"Subnet [{default}]: ").strip() or default
-    subprocess.run(["nmap", "-sn", subnet])
+    subprocess.run([resolve_command("nmap") or "nmap", "-sn", subnet])
 
 def port_scan() -> None:
     if not ensure_dependency("nmap"):
@@ -23,7 +23,7 @@ def port_scan() -> None:
     target = input("Target IP/hostname: ").strip()
     if not target:
         return
-    subprocess.run(["nmap", "-sV", target])
+    subprocess.run([resolve_command("nmap") or "nmap", "-sV", target])
 
 def os_fingerprint() -> None:
     if not ensure_dependency("nmap"):
@@ -31,4 +31,4 @@ def os_fingerprint() -> None:
     target = input("Target IP/hostname: ").strip()
     if not target:
         return
-    subprocess.run(["nmap", "-O", target])
+    subprocess.run([resolve_command("nmap") or "nmap", "-O", target])

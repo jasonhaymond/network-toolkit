@@ -2,19 +2,30 @@
 dependencies.py
 
 Cross-platform dependency manager for Network Toolkit.
-Handles external commands, startup audit, automatic install where possible,
-and dynamic subnet detection.
+
+This file separates two very different things that humans, package
+managers, and Windows PATH handling love to blur together:
+
+1. Python packages installed with pip
+2. External command-line tools installed with winget/choco/scoop/brew/apt/etc.
+
+It also knows that some tools are not useful or not supported on every OS,
+so the startup audit no longer screams that macOS/Linux-only tools are
+"missing" on Windows. Revolutionary. Barely civilized.
 """
+
 from __future__ import annotations
 
-import importlib
+import importlib.util
 import ipaddress
+import os
 import platform
 import shutil
 import socket
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Iterable
 
 import psutil
@@ -22,39 +33,231 @@ from rich.console import Console
 from rich.table import Table
 
 console = Console()
-SYSTEM = platform.system()
+SYSTEM = platform.system()  # Windows, Darwin, Linux
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+# ---------------------------------------------------------------------------
+# Models
+# ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
-class Dependency:
-    command: str
+class PythonPackage:
+    pip_name: str
+    import_names: tuple[str, ...]
     description: str
+    required: bool = True
+
+
+@dataclass(frozen=True)
+class CommandDependency:
+    key: str
+    commands: tuple[str, ...]
+    description: str
+    platforms: tuple[str, ...] = ("Windows", "Darwin", "Linux")
     required: bool = False
     winget_id: str | None = None
+    choco_name: str | None = None
+    scoop_name: str | None = None
     brew_name: str | None = None
     apt_name: str | None = None
+    dnf_name: str | None = None
+    pacman_name: str | None = None
+    common_windows_paths: tuple[str, ...] = field(default_factory=tuple)
 
-DEPENDENCIES: dict[str, Dependency] = {
-    "nmap": Dependency("nmap", "Subnet scans, ping sweeps, port scans, OS/service fingerprinting", True, "Insecure.Nmap", "nmap", "nmap"),
-    "iperf3": Dependency("iperf3", "Local LAN throughput testing", False, "ESnet.iPerf3", "iperf3", "iperf3"),
-    "tcpdump": Dependency("tcpdump", "Packet capture", False, None, None, "tcpdump"),
-    "lldpctl": Dependency("lldpctl", "LLDP switch and port discovery", False, None, "lldpd", "lldpd"),
-    "speedtest": Dependency("speedtest", "Ookla Speedtest CLI if installed", False, "Ookla.Speedtest.CLI", "speedtest-cli", None),
-    "arp-scan": Dependency("arp-scan", "ARP-based subnet discovery", False, None, "arp-scan", "arp-scan"),
+
+# ---------------------------------------------------------------------------
+# Python package dependencies
+# ---------------------------------------------------------------------------
+
+PYTHON_PACKAGES: dict[str, PythonPackage] = {
+    "rich": PythonPackage("rich", ("rich",), "Pretty terminal output"),
+    "psutil": PythonPackage("psutil", ("psutil",), "Interface and system information"),
+    "PyYAML": PythonPackage("PyYAML", ("yaml",), "Settings file support"),
+    "requests": PythonPackage("requests", ("requests",), "HTTP checks and public IP lookup"),
+    "ping3": PythonPackage("ping3", ("ping3",), "Python ping helper", required=False),
+    "speedtest-cli": PythonPackage("speedtest-cli", ("speedtest",), "Internet speed test module", required=False),
+    "dnspython": PythonPackage("dnspython", ("dns", "dns.resolver"), "Advanced DNS resolver support", required=False),
+    "python-nmap": PythonPackage("python-nmap", ("nmap",), "Python wrapper for Nmap", required=False),
 }
 
-PYTHON_PACKAGES = {
-    "rich": "rich",
-    "psutil": "psutil",
-    "yaml": "PyYAML",
-    "ping3": "ping3",
-    "requests": "requests",
+
+# ---------------------------------------------------------------------------
+# External command dependencies
+# ---------------------------------------------------------------------------
+
+COMMAND_DEPENDENCIES: dict[str, CommandDependency] = {
+    "nmap": CommandDependency(
+        key="nmap",
+        commands=("nmap", "nmap.exe"),
+        description="Subnet scans, ping sweeps, port scans, service/OS fingerprinting",
+        required=True,
+        winget_id="Insecure.Nmap",
+        choco_name="nmap",
+        scoop_name="nmap",
+        brew_name="nmap",
+        apt_name="nmap",
+        dnf_name="nmap",
+        pacman_name="nmap",
+        common_windows_paths=(
+            r"C:\Program Files (x86)\Nmap\nmap.exe",
+            r"C:\Program Files\Nmap\nmap.exe",
+        ),
+    ),
+    "iperf3": CommandDependency(
+        key="iperf3",
+        commands=("iperf3", "iperf3.exe"),
+        description="LAN throughput testing",
+        required=False,
+        winget_id="ESnet.iPerf3",
+        choco_name="iperf3",
+        scoop_name="iperf3",
+        brew_name="iperf3",
+        apt_name="iperf3",
+        dnf_name="iperf3",
+        pacman_name="iperf3",
+        common_windows_paths=(
+            r"C:\Program Files\iperf3\iperf3.exe",
+            r"C:\Program Files (x86)\iperf3\iperf3.exe",
+            r"C:\iperf3\iperf3.exe",
+        ),
+    ),
+    "tcpdump": CommandDependency(
+        key="tcpdump",
+        commands=("tcpdump",),
+        description="Packet capture",
+        platforms=("Darwin", "Linux"),
+        required=False,
+        brew_name=None,  # Built into macOS enough for our purpose.
+        apt_name="tcpdump",
+        dnf_name="tcpdump",
+        pacman_name="tcpdump",
+    ),
+    "lldpctl": CommandDependency(
+        key="lldpctl",
+        commands=("lldpctl",),
+        description="LLDP switch and port discovery",
+        platforms=("Darwin", "Linux"),
+        required=False,
+        brew_name="lldpd",
+        apt_name="lldpd",
+        dnf_name="lldpd",
+        pacman_name="lldpd",
+    ),
+    "arp-scan": CommandDependency(
+        key="arp-scan",
+        commands=("arp-scan",),
+        description="ARP-based subnet discovery",
+        platforms=("Darwin", "Linux"),
+        required=False,
+        brew_name="arp-scan",
+        apt_name="arp-scan",
+        dnf_name="arp-scan",
+        pacman_name="arp-scan",
+    ),
+    "tshark": CommandDependency(
+        key="tshark",
+        commands=("tshark", "tshark.exe"),
+        description="Advanced packet capture/inspection via Wireshark CLI",
+        required=False,
+        winget_id="WiresharkFoundation.Wireshark",
+        choco_name="wireshark",
+        brew_name="wireshark",
+        apt_name="tshark",
+        dnf_name="wireshark-cli",
+        pacman_name="wireshark-cli",
+        common_windows_paths=(
+            r"C:\Program Files\Wireshark\tshark.exe",
+            r"C:\Program Files (x86)\Wireshark\tshark.exe",
+        ),
+    ),
 }
 
-def command_exists(command: str) -> bool:
-    return shutil.which(command) is not None
 
-def require_command(command: str) -> bool:
-    return ensure_dependency(command)
+# Backward-compatible names older modules may import.
+DEPENDENCIES = COMMAND_DEPENDENCIES
+
+
+# ---------------------------------------------------------------------------
+# Basic helpers
+# ---------------------------------------------------------------------------
+
+def _split_path() -> list[str]:
+    return [p for p in os.environ.get("PATH", "").split(os.pathsep) if p]
+
+
+def _add_to_path(directory: str | Path) -> None:
+    directory = str(directory)
+    if not directory:
+        return
+    existing = _split_path()
+    if directory not in existing:
+        os.environ["PATH"] = directory + os.pathsep + os.environ.get("PATH", "")
+
+
+def _candidate_project_tool_paths(command: str) -> Iterable[Path]:
+    """Look for portable tools bundled inside the project folder."""
+    names = {command, f"{command}.exe"}
+    for folder in (
+        PROJECT_ROOT / "tools",
+        PROJECT_ROOT / "bin",
+        PROJECT_ROOT / "vendor",
+    ):
+        if not folder.exists():
+            continue
+        for name in names:
+            yield folder / name
+        if SYSTEM == "Windows":
+            # A small recursive search for common portable layouts.
+            for name in names:
+                yield from folder.glob(f"**/{name}")
+
+
+def resolve_command(command_or_key: str) -> str | None:
+    """
+    Return an executable path/name for a command dependency.
+
+    This does more than shutil.which because Windows installers often add PATH
+    only for newly opened terminals. If we can find the executable in common
+    locations, we add its folder to this process PATH so subprocess calls work.
+    """
+    dep = COMMAND_DEPENDENCIES.get(command_or_key)
+    command_names = dep.commands if dep else (command_or_key,)
+
+    for command in command_names:
+        found = shutil.which(command)
+        if found:
+            return found
+
+    # Portable project-local tools.
+    for command in command_names:
+        for candidate in _candidate_project_tool_paths(command.removesuffix(".exe")):
+            if candidate.exists() and candidate.is_file():
+                _add_to_path(candidate.parent)
+                return str(candidate)
+
+    # Known Windows install locations.
+    if SYSTEM == "Windows" and dep:
+        for raw_path in dep.common_windows_paths:
+            candidate = Path(os.path.expandvars(raw_path))
+            if candidate.exists() and candidate.is_file():
+                _add_to_path(candidate.parent)
+                return str(candidate)
+
+    return None
+
+
+def command_exists(command_or_key: str) -> bool:
+    return resolve_command(command_or_key) is not None
+
+
+def require_command(command_or_key: str) -> bool:
+    return ensure_dependency(command_or_key)
+
+
+def python_package_exists(package: PythonPackage) -> bool:
+    return all(importlib.util.find_spec(name) is not None for name in package.import_names)
+
 
 def _run(command: list[str]) -> bool:
     try:
@@ -65,130 +268,255 @@ def _run(command: list[str]) -> bool:
         console.print(str(exc))
         return False
 
-def package_manager() -> str | None:
-    if SYSTEM == "Windows" and command_exists("winget"):
-        return "winget"
-    if SYSTEM == "Darwin" and command_exists("brew"):
-        return "brew"
-    if SYSTEM == "Linux" and command_exists("apt"):
-        return "apt"
-    return None
 
-def _install_command_for(dep: Dependency) -> list[str] | None:
-    manager = package_manager()
+# ---------------------------------------------------------------------------
+# Python package installation
+# ---------------------------------------------------------------------------
+
+def install_python_package(pip_name: str) -> bool:
+    console.print(f"[cyan]Installing Python package:[/cyan] {pip_name}")
+    result = subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", pip_name])
+    return result.returncode == 0
+
+
+def install_python_requirements() -> bool:
+    requirements = PROJECT_ROOT / "requirements.txt"
+    if not requirements.exists():
+        console.print("[yellow]requirements.txt was not found.[/yellow]")
+        return False
+    console.print("[cyan]Installing/updating Python requirements...[/cyan]")
+    result = subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "-r", str(requirements)])
+    return result.returncode == 0
+
+
+def ensure_python_package(import_or_pip_name: str, pip_name: str | None = None) -> bool:
+    """Backward-compatible helper for older code."""
+    package = PYTHON_PACKAGES.get(import_or_pip_name)
+    if package is None:
+        package = next((p for p in PYTHON_PACKAGES.values() if import_or_pip_name in p.import_names), None)
+    if package is None:
+        package = PythonPackage(pip_name or import_or_pip_name, (import_or_pip_name,), "Python package")
+
+    if python_package_exists(package):
+        return True
+
+    answer = input(f"Install Python package {package.pip_name}? (Y/n): ").strip().lower()
+    if answer not in ("", "y", "yes"):
+        return False
+
+    install_python_package(package.pip_name)
+    return python_package_exists(package)
+
+
+# ---------------------------------------------------------------------------
+# External package manager detection and installation
+# ---------------------------------------------------------------------------
+
+def available_package_managers() -> list[str]:
+    managers: list[str] = []
+    if SYSTEM == "Windows":
+        for manager in ("winget", "choco", "scoop"):
+            if shutil.which(manager):
+                managers.append(manager)
+    elif SYSTEM == "Darwin":
+        if shutil.which("brew"):
+            managers.append("brew")
+    elif SYSTEM == "Linux":
+        for manager in ("apt", "dnf", "pacman"):
+            if shutil.which(manager):
+                managers.append(manager)
+    return managers
+
+
+def _install_command_for(dep: CommandDependency, manager: str) -> list[str] | None:
     if manager == "winget" and dep.winget_id:
         return ["winget", "install", "-e", "--id", dep.winget_id]
+    if manager == "choco" and dep.choco_name:
+        return ["choco", "install", dep.choco_name, "-y"]
+    if manager == "scoop" and dep.scoop_name:
+        return ["scoop", "install", dep.scoop_name]
     if manager == "brew" and dep.brew_name:
         return ["brew", "install", dep.brew_name]
     if manager == "apt" and dep.apt_name:
         return ["sudo", "apt", "install", "-y", dep.apt_name]
+    if manager == "dnf" and dep.dnf_name:
+        return ["sudo", "dnf", "install", "-y", dep.dnf_name]
+    if manager == "pacman" and dep.pacman_name:
+        return ["sudo", "pacman", "-S", "--noconfirm", dep.pacman_name]
     return None
 
+
 def install_dependency(name: str) -> bool:
-    dep = DEPENDENCIES.get(name) or next((d for d in DEPENDENCIES.values() if d.command == name), None)
+    dep = COMMAND_DEPENDENCIES.get(name) or next(
+        (d for d in COMMAND_DEPENDENCIES.values() if name in d.commands),
+        None,
+    )
+
     if dep is None:
         console.print(f"[yellow]No installer definition exists for '{name}'.[/yellow]")
         return False
-    if command_exists(dep.command):
-        return True
-    install_cmd = _install_command_for(dep)
-    if install_cmd is None:
-        console.print(f"[yellow]No automatic installer is available for {dep.command} on this system.[/yellow]")
-        console.print("Install it manually and restart the terminal. Because PATH enjoys practical jokes.")
+
+    if SYSTEM not in dep.platforms:
+        console.print(f"[yellow]{dep.key} is not supported by this toolkit on {SYSTEM} yet.[/yellow]")
         return False
-    console.print(f"\n[cyan]Installing {dep.command}...[/cyan]")
-    success = _run(install_cmd)
-    if not success:
-        console.print(f"[red]Installation failed for {dep.command}.[/red]")
-        return False
-    if command_exists(dep.command):
-        console.print(f"[green]{dep.command} is ready.[/green]")
+
+    if command_exists(dep.key):
         return True
-    console.print(f"[yellow]{dep.command} installed, but it is not visible in this terminal PATH yet.[/yellow]")
-    console.print("Close and reopen VS Code/Terminal, then try again.")
+
+    managers = available_package_managers()
+    if not managers:
+        console.print("[yellow]No supported package manager was found.[/yellow]")
+        if SYSTEM == "Windows":
+            console.print("Install winget, Chocolatey, or Scoop, or install the tool manually.")
+        return False
+
+    for manager in managers:
+        install_cmd = _install_command_for(dep, manager)
+        if install_cmd is None:
+            continue
+        console.print(f"\n[cyan]Installing {dep.key} with {manager}...[/cyan]")
+        if _run(install_cmd):
+            if command_exists(dep.key):
+                console.print(f"[green]{dep.key} is ready.[/green]")
+                return True
+            console.print(f"[yellow]{dep.key} may be installed, but it is not visible in this terminal yet.[/yellow]")
+            console.print("Close and reopen VS Code/Terminal if it still shows missing. Yes, PATH is still ridiculous.")
+            return False
+
+    console.print(f"[red]Automatic installation failed or no installer is defined for {dep.key}.[/red]")
     return False
+
 
 def ensure_dependency(name: str) -> bool:
-    dep = DEPENDENCIES.get(name) or next((d for d in DEPENDENCIES.values() if d.command == name), None)
-    command = dep.command if dep else name
-    if command_exists(command):
+    dep = COMMAND_DEPENDENCIES.get(name) or next(
+        (d for d in COMMAND_DEPENDENCIES.values() if name in d.commands),
+        None,
+    )
+    display_name = dep.key if dep else name
+
+    if command_exists(display_name):
         return True
-    console.print(f"\n[yellow]{command} is not installed or not in PATH.[/yellow]")
+
+    if dep and SYSTEM not in dep.platforms:
+        console.print(f"[yellow]{display_name} is not supported on {SYSTEM} in this toolkit.[/yellow]")
+        return False
+
+    console.print(f"\n[yellow]{display_name} is not installed or not in PATH.[/yellow]")
     answer = input("Install automatically now? (Y/n): ").strip().lower()
     if answer in ("", "y", "yes"):
-        return install_dependency(name)
+        return install_dependency(display_name)
     return False
 
-def ensure_python_package(import_name: str, pip_name: str | None = None) -> bool:
-    pip_name = pip_name or import_name
-    try:
-        importlib.import_module(import_name)
-        return True
-    except ImportError:
-        console.print(f"[yellow]Python package missing:[/yellow] {pip_name}")
-        answer = input("Install automatically now? (Y/n): ").strip().lower()
-        if answer not in ("", "y", "yes"):
-            return False
-        result = subprocess.run([sys.executable, "-m", "pip", "install", pip_name])
-        return result.returncode == 0
 
-def dependency_status(show_python: bool = True) -> list[tuple[str, bool, str]]:
-    rows: list[tuple[str, bool, str]] = []
-    for dep in DEPENDENCIES.values():
-        rows.append((dep.command, command_exists(dep.command), dep.description))
-    if show_python:
-        for import_name, pip_name in PYTHON_PACKAGES.items():
-            try:
-                importlib.import_module(import_name)
-                ok = True
-            except ImportError:
-                ok = False
-            rows.append((pip_name, ok, "Python package"))
+# ---------------------------------------------------------------------------
+# Status and startup audit
+# ---------------------------------------------------------------------------
+
+def python_dependency_status() -> list[tuple[str, str, bool, str]]:
+    rows: list[tuple[str, str, bool, str]] = []
+    for package in PYTHON_PACKAGES.values():
+        installed = python_package_exists(package)
+        rows.append((package.pip_name, "Python", installed, package.description))
     return rows
+
+
+def command_dependency_status() -> list[tuple[str, str, bool | None, str]]:
+    rows: list[tuple[str, str, bool | None, str]] = []
+    for dep in COMMAND_DEPENDENCIES.values():
+        if SYSTEM not in dep.platforms:
+            rows.append((dep.key, "External", None, f"Unsupported on {SYSTEM}: {dep.description}"))
+        else:
+            rows.append((dep.key, "External", command_exists(dep.key), dep.description))
+    return rows
+
+
+def dependency_status(show_python: bool = True) -> list[tuple[str, str, bool | None, str]]:
+    rows: list[tuple[str, str, bool | None, str]] = []
+    if show_python:
+        rows.extend(python_dependency_status())
+    rows.extend(command_dependency_status())
+    return rows
+
 
 def print_dependency_status() -> None:
     table = Table(title="Network Toolkit Dependency Status")
     table.add_column("Dependency")
+    table.add_column("Type")
     table.add_column("Status")
     table.add_column("Use")
-    for name, installed, desc in dependency_status():
-        status = "[green]Installed[/green]" if installed else "[red]Missing[/red]"
-        table.add_row(name, status, desc)
+
+    for name, dep_type, installed, desc in dependency_status(show_python=True):
+        if installed is True:
+            status = "[green]Installed[/green]"
+        elif installed is False:
+            status = "[red]Missing[/red]"
+        else:
+            status = "[dim]N/A[/dim]"
+        table.add_row(name, dep_type, status, desc)
+
     console.print(table)
 
+
 def startup_dependency_audit(auto_install_mode: str = "ask") -> None:
+    """
+    Run one clean startup dependency check.
+
+    auto_install_mode:
+        ask    - ask before installing
+        always - install without asking
+        never  - only report
+    """
     console.print("\n[cyan]Network Toolkit Startup Check[/cyan]")
-    console.print("Checking dependencies, because apparently computers require ingredients now.\n")
+    console.print("Checking Python packages and external tools. The least glamorous part of civilization.\n")
+
     print_dependency_status()
-    missing_commands = [name for name, ok, _ in dependency_status(show_python=False) if not ok]
-    missing_python = []
-    for import_name, pip_name in PYTHON_PACKAGES.items():
-        try:
-            importlib.import_module(import_name)
-        except ImportError:
-            missing_python.append((import_name, pip_name))
-    if not missing_commands and not missing_python:
+
+    missing_python = [p for p in PYTHON_PACKAGES.values() if not python_package_exists(p)]
+    missing_commands = [
+        d for d in COMMAND_DEPENDENCIES.values()
+        if SYSTEM in d.platforms and not command_exists(d.key)
+    ]
+
+    if not missing_python and not missing_commands:
         console.print("[green]All known dependencies are available.[/green]")
         return
-    console.print(f"\n[yellow]{len(missing_commands) + len(missing_python)} dependencies are missing.[/yellow]")
-    install = False
-    if auto_install_mode == "always":
-        install = True
-    elif auto_install_mode == "never":
-        install = False
-    else:
-        answer = input("Install missing supported dependencies now? (Y/n): ").strip().lower()
+
+    console.print(f"\n[yellow]{len(missing_python) + len(missing_commands)} supported dependencies are missing.[/yellow]")
+
+    if auto_install_mode == "never":
+        return
+
+    install = auto_install_mode == "always"
+    if auto_install_mode == "ask":
+        answer = input("Install/update missing supported dependencies now? (Y/n): ").strip().lower()
         install = answer in ("", "y", "yes")
+
     if not install:
         return
-    for import_name, pip_name in missing_python:
-        subprocess.run([sys.executable, "-m", "pip", "install", pip_name])
-    for name in missing_commands:
-        install_dependency(name)
+
+    if missing_python:
+        # Use requirements.txt first because it is simpler and keeps versions sane.
+        install_python_requirements()
+        for package in missing_python:
+            if not python_package_exists(package):
+                install_python_package(package.pip_name)
+
+    for dep in missing_commands:
+        install_dependency(dep.key)
+
     console.print("\n[cyan]Rechecking dependency status...[/cyan]")
     print_dependency_status()
 
+
+# ---------------------------------------------------------------------------
+# Network helpers
+# ---------------------------------------------------------------------------
+
 def get_dynamic_subnet() -> str:
+    """
+    Return the subnet for the first active non-loopback IPv4 interface.
+    Example: 192.168.1.0/24
+    """
     for interface, addresses in psutil.net_if_addrs().items():
         for addr in addresses:
             if addr.family != socket.AF_INET:
@@ -197,6 +525,9 @@ def get_dynamic_subnet() -> str:
                 continue
             if not addr.netmask:
                 continue
-            network = ipaddress.IPv4Network(f"{addr.address}/{addr.netmask}", strict=False)
-            return str(network)
+            try:
+                network = ipaddress.IPv4Network(f"{addr.address}/{addr.netmask}", strict=False)
+                return str(network)
+            except Exception:
+                continue
     return "192.168.1.0/24"
