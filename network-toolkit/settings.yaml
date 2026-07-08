@@ -1,0 +1,11 @@
+ping_target: 8.8.8.8
+secondary_ping_target: 1.1.1.1
+dns_server: 1.1.1.1
+dns_test_domain: google.com
+default_subnet: auto
+monitoring_interval_seconds: 5
+logging_enabled: true
+report_export_path: reports
+hide_unhelpful_interfaces: true
+show_sensitive_wifi_identifiers: true
+wifi_collector_priority: corewlan
