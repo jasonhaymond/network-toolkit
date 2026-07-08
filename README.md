@@ -328,6 +328,41 @@ sudo .venv/bin/python main.py
 
 ---
 
+
+
+## Windows install.bat troubleshooting
+
+If you see:
+
+```text
+The system cannot find the path specified.
+```
+
+during pip or requirements installation, the virtual environment did not build correctly or `.venv\Scripts\python.exe` is missing.
+
+The installer now checks this and stops instead of pretending everything is fine, because apparently batch files learned honesty late in life.
+
+Try:
+
+```powershell
+rmdir /s /q .venv
+install.bat
+```
+
+Also confirm Python works:
+
+```powershell
+py -3 --version
+python --version
+```
+
+If both fail, reinstall Python from python.org and check:
+
+```text
+Add python.exe to PATH
+```
+
+
 # Fixing Common Missing Package Problems
 
 ## `speedtest-cli: command not found`

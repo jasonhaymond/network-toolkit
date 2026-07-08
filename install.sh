@@ -74,7 +74,14 @@ create_venv() {
         }
     fi
 
+    if [ ! -x "$PYTHON_BIN" ]; then
+        echo "ERROR: Virtual environment Python was not created at $PYTHON_BIN"
+        echo "Try deleting .venv and rerunning ./install.sh"
+        exit 1
+    fi
+
     echo "Upgrading pip/setuptools/wheel..."
+    "$PYTHON_BIN" -m ensurepip --upgrade >/dev/null 2>&1 || true
     "$PYTHON_BIN" -m pip install --upgrade pip setuptools wheel
 
     echo "Installing Python requirements..."
