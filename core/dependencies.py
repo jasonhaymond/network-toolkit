@@ -15,11 +15,44 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from typing import Optional
-
 from rich.console import Console
 from rich.prompt import Confirm
+import socket
+import ipaddress
+import psutil
+import shutil
 
 console = Console()
+
+def require_command(command_name: str) -> bool:
+    return shutil.which(command_name) is not None
+
+
+def get_dynamic_subnet() -> str:
+    """
+    Detect the first active IPv4 interface and return its subnet in CIDR format.
+    Example: 192.168.1.0/24
+    """
+
+    interfaces = psutil.net_if_addrs()
+
+    for interface_name, addresses in interfaces.items():
+        for addr in addresses:
+            if addr.family == socket.AF_INET:
+                ip = addr.address
+                netmask = addr.netmask
+
+                if ip.startswith("127."):
+                    continue
+
+                if ip and netmask:
+                    network = ipaddress.IPv4Network(
+                        f"{ip}/{netmask}",
+                        strict=False
+                    )
+                    return str(network)
+
+    return "192.168.1.0/24"
 
 
 @dataclass
