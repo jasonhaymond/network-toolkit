@@ -26,6 +26,7 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 
 from core.utils import run_command
+from core.ui import menu_table, add_zero_row
 
 console = Console()
 
@@ -136,34 +137,109 @@ def tcp_connect_test(host, port, attempts=10, timeout=3):
 
 
 def dns_latency_test(domain, dns_server=None, attempts=10, timeout=3):
+    """Measure DNS lookup latency with robust fallbacks.
+
+    Previous behavior used a single nslookup subprocess with the same short timeout
+    used for network sockets. That can fail on corporate Windows machines because
+    nslookup startup, policy inspection, DNS suffix handling, or security tooling can
+    take longer than 3 seconds. Humans then run nslookup manually and it works,
+    making the script look like it was assembled by raccoons. Not ideal.
+
+    New behavior:
+    1. Use the OS resolver via socket.getaddrinfo() first.
+    2. If a DNS server is configured, also try nslookup with a safer timeout.
+    3. Count the attempt successful if either method succeeds.
+    """
     samples = []
+    process_timeout = max(float(timeout) + 5, 8)
 
     for i in range(1, attempts + 1):
+        errors = []
         start = time.perf_counter()
+        success = False
+        resolver_used = ""
+
+        # First try the system resolver. This mirrors what most apps actually use.
         try:
-            if dns_server:
+            socket.getaddrinfo(domain, None)
+            success = True
+            resolver_used = "system resolver"
+        except Exception as e:
+            errors.append(f"system resolver: {e}")
+
+        # If a DNS server is configured, try nslookup too. This gives direct-server
+        # visibility without making the whole test fail when nslookup is weird.
+        if dns_server:
+            try:
                 completed = subprocess.run(
                     ["nslookup", domain, dns_server],
                     capture_output=True,
                     text=True,
-                    timeout=timeout,
+                    timeout=process_timeout,
                 )
-                if completed.returncode != 0:
-                    raise RuntimeError(completed.stderr.strip() or completed.stdout.strip())
-            else:
-                socket.getaddrinfo(domain, None)
 
-            latency = (time.perf_counter() - start) * 1000
-            samples.append({"sample": i, "success": True, "latency_ms": round(latency, 2), "error": ""})
-        except Exception as e:
-            samples.append({"sample": i, "success": False, "latency_ms": None, "error": str(e)})
+                combined_output = ((completed.stdout or "") + "
+" + (completed.stderr or "")).strip()
+                output_lower = combined_output.lower()
 
-    target = f"{domain} via {dns_server}" if dns_server else domain
+                # nslookup output varies by OS. Treat common positive signs as success.
+                positive_markers = [
+                    "name:",
+                    "address:",
+                    "addresses:",
+                    "non-authoritative answer",
+                ]
+                negative_markers = [
+                    "can't find",
+                    "server failed",
+                    "timed out",
+                    "no response",
+                    "non-existent domain",
+                    "can't reach",
+                ]
+
+                has_positive = any(marker in output_lower for marker in positive_markers)
+                has_negative = any(marker in output_lower for marker in negative_markers)
+
+                if completed.returncode == 0 or (has_positive and not has_negative):
+                    success = True
+                    resolver_used = f"nslookup via {dns_server}" if not resolver_used else f"{resolver_used} + nslookup via {dns_server}"
+                else:
+                    errors.append(f"nslookup: {combined_output or 'no output'}")
+            except Exception as e:
+                errors.append(f"nslookup: {e}")
+
+        latency = (time.perf_counter() - start) * 1000
+
+        if success:
+            samples.append({
+                "sample": i,
+                "success": True,
+                "latency_ms": round(latency, 2),
+                "resolver_used": resolver_used,
+                "error": "",
+            })
+        else:
+            samples.append({
+                "sample": i,
+                "success": False,
+                "latency_ms": None,
+                "resolver_used": "",
+                "error": " | ".join(errors),
+            })
+
+    target = f"{domain} via system resolver"
+    if dns_server:
+        target += f" + {dns_server}"
+
     result = summarize_samples(samples)
     result.update({
         "method": "DNS Lookup",
         "target": target,
-        "notes": "Measures DNS resolution time. Very useful on corporate networks.",
+        "notes": (
+            "Measures DNS resolution time. Uses system resolver first and nslookup as "
+            "a direct-server fallback so corporate DNS/security delay does not cause false failures."
+        ),
     })
     return result
 
@@ -507,9 +583,7 @@ def connection_quality_test(config, methods_override=None):
 def connection_quality_submenu(config):
     while True:
         console.clear()
-        table = Table(title="Connection Tests")
-        table.add_column("#")
-        table.add_column("Test")
+        table = menu_table("Connection Tests")
 
         options = [
             ("1", "Run Auto Quality Test"),
@@ -525,8 +599,7 @@ def connection_quality_submenu(config):
         for key, label in options:
             table.add_row(key, label)
 
-        table.add_row("", "")
-        table.add_row("0", "Return to Main Menu")
+        add_zero_row(table, "Return to Main Menu")
         console.print(table)
 
         choice = Prompt.ask("Selection")

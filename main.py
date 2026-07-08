@@ -18,11 +18,11 @@ import sys
 from pathlib import Path
 
 from rich.console import Console
-from rich.table import Table
 from rich.prompt import Confirm, Prompt
 
 from core.config import load_config, settings_menu
 from core.exports import ReportSession
+from core.ui import menu_table, add_zero_row
 
 from modules.interfaces import show_interfaces, show_all_interfaces
 from modules.gateway import show_gateway
@@ -132,16 +132,12 @@ def export_menu(report, config):
     """Report export submenu."""
     while True:
         console.clear()
-        table = Table(title="Export Reports")
-        table.add_column("#", style="cyan", justify="right")
-        table.add_column("Export Type", style="white")
-
+        table = menu_table("Export Reports")
         table.add_row("1", "Export JSON")
         table.add_row("2", "Export CSV")
         table.add_row("3", "Export HTML")
         table.add_row("4", "Export All")
-        table.add_row("", "")
-        table.add_row("0", "Return")
+        add_zero_row(table, "Return")
 
         console.print(table)
 
@@ -171,13 +167,7 @@ def main_menu():
 
         mode = "Administrator" if is_admin() else "Normal"
 
-        table = Table(
-            title=f"Network Toolkit — {mode} Mode",
-            show_header=True,
-            header_style="bold cyan",
-        )
-        table.add_column("#", style="cyan", justify="right", width=4)
-        table.add_column("Test / Tool", style="white")
+        table = menu_table(f"Network Toolkit — {mode} Mode")
 
         options = [
             "Useful Interface / IP Info",

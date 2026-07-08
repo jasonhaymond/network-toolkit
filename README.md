@@ -168,7 +168,18 @@ The old ICMP-only latency/jitter test has been replaced with a **Connection Test
 
 Why? Because many corporate networks block ICMP ping. The network may be fine, but ping gets tossed into a firewall dungeon.
 
-## Connection Tests Submenu
+#
+
+## DNS Connection Test Fix
+
+The DNS connection-quality test now uses a safer two-step method:
+
+1. System resolver lookup with Python `socket.getaddrinfo()`
+2. Optional `nslookup` against the configured DNS server
+
+This avoids false DNS failures on corporate networks where `nslookup` may take longer to start, get inspected by endpoint security, or behave differently when called from a subprocess. Because apparently DNS needed plot twists.
+
+# Connection Tests Submenu
 
 ```text
 1) Run Auto Quality Test

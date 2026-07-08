@@ -10,6 +10,7 @@ import yaml
 from pathlib import Path
 from rich.console import Console
 from rich.prompt import Prompt
+from core.ui import menu_table, add_zero_row
 
 console = Console()
 CONFIG_FILE = Path("settings.yaml")
