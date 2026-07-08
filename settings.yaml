@@ -3,27 +3,10 @@ secondary_ping_target: 1.1.1.1
 dns_server: 1.1.1.1
 dns_test_domain: google.com
 default_subnet: auto
-monitoring_interval_seconds: 5
 logging_enabled: true
-report_export_path: reports
-hide_unhelpful_interfaces: true
-show_sensitive_wifi_identifiers: true
-wifi_collector_priority: corewlan
-
-connection_quality_host: cloudflare.com
-connection_quality_ip: 1.1.1.1
-connection_quality_port: 443
-connection_quality_url: https://cloudflare.com
-connection_quality_attempts: 10
-connection_quality_timeout_seconds: 3
-connection_quality_preferred_method: auto
-connection_quality_dns_domain: google.com
-connection_quality_dns_server: 1.1.1.1
-iperf3_server: ""
-iperf3_duration_seconds: 10
-
-connection_quality_score_include_tcp: true
-connection_quality_score_include_https: true
-connection_quality_score_include_dns: true
-connection_quality_score_include_icmp: false
-connection_quality_score_include_iperf3: true
+monitoring_interval_seconds: 5
+report_export_path: reports/
+packet_capture_path: captures/
+preferred_interface: auto
+startup_dependency_audit: true
+auto_install_dependencies: ask

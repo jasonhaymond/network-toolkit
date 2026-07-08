@@ -1,258 +1,71 @@
-"""
-Network Toolkit main menu.
-
-This file is intentionally boring in the best possible way:
-- imports the modules
-- shows menus
-- collects report data
-- exits cleanly when asked
-
-The heavy lifting belongs in modules/, because giant do-everything files are where
-maintainability goes to become a ghost story.
-"""
-
-import atexit
-import os
-import subprocess
-import sys
-from pathlib import Path
-
+from __future__ import annotations
 from rich.console import Console
-from rich.prompt import Confirm, Prompt
+from rich.panel import Panel
 
-from core.config import load_config, settings_menu
-from core.exports import ReportSession
-from core.ui import menu_table, add_zero_row
-
-from modules.interfaces import show_interfaces, show_all_interfaces
-from modules.gateway import show_gateway
+from core.config import load_settings
+from core.dependencies import startup_dependency_audit, print_dependency_status
+from modules.interfaces import show_interfaces
+from modules.scanning import subnet_scan, port_scan, os_fingerprint
+from modules.internet import ping_test, public_ip, speed_test
 from modules.dns import dns_test
-from modules.internet import internet_test, speed_test
-from modules.wifi import wifi_info, wifi_scan, advanced_wifi_diagnostics
-from modules.scanning import subnet_scan
-from modules.monitoring import latency_monitor
-from modules.connection_quality import connection_quality_submenu
-from modules.switch import switch_port_info
-from modules.permissions import show_permissions_help
-from modules.dependency_checks import dependency_check_menu
+from modules.wifi import wifi_info, wifi_scan
+from modules.switch import switch_port_info, poe_info
+from modules.advanced import iperf_client, packet_capture, latency_monitor
+from modules.settings_menu import settings_menu
 
 console = Console()
 
+def pause() -> None:
+    input("\nPress Enter to continue...")
 
-def goodbye():
-    """Reserved for future cleanup hooks.
-
-    Keeping this here lets us add cleanup later without redesigning exit behavior.
-    Yes, this is the software equivalent of leaving yourself a labeled drawer.
-    """
-    pass
-
-
-atexit.register(goodbye)
-
-
-def clean_exit():
-    """Exit immediately and cleanly.
-
-    Important: do not route this through run_and_collect(), because that wrapper
-    intentionally pauses after tools run. Exit should exit, not ask the user to
-    admire the scenery first.
-    """
-    console.print()
-    console.print("[green]Network Toolkit exited successfully.[/green]")
-    console.print()
-    sys.exit(0)
-
-
-def is_admin():
-    """Return True if the process is running with administrator/root privileges."""
-    if hasattr(os, "geteuid"):
-        return os.geteuid() == 0
-    return False
-
-
-def restart_in_admin_mode():
-    """Relaunch the toolkit with sudo/admin privileges on Unix-like systems."""
-    if is_admin():
-        console.print("[green]Already running in Administrator Mode.[/green]")
-        Prompt.ask("Press Enter to continue")
-        return
-
-    console.print()
-    console.print("[yellow]Administrator Mode is useful for Wi-Fi diagnostics, LLDP, packet capture, and deeper scans.[/yellow]")
-
-    if not Confirm.ask("Restart Network Toolkit in Administrator Mode now?", default=True):
-        return
-
-    python_path = sys.executable
-    main_path = Path(__file__).resolve()
-
-    console.print()
-    console.print("[cyan]Restarting with sudo...[/cyan]")
-    console.print()
-
-    try:
-        subprocess.run(["sudo", python_path, str(main_path)])
-    except KeyboardInterrupt:
-        pass
-
-    clean_exit()
-
-
-def run_admin_required(report, name, func, *args):
-    """Run a tool that may need elevated permissions.
-
-    If we are not currently elevated, ask whether to restart in Administrator
-    Mode. Corporate network diagnostics: where asking permission is somehow
-    still easier than asking the firewall why it hates joy.
-    """
-    if not is_admin():
-        console.print()
-        console.print("[yellow]This tool may require Administrator Mode for complete results.[/yellow]")
-        if Confirm.ask("Restart in Administrator Mode now?", default=True):
-            restart_in_admin_mode()
-            return
-
-    run_and_collect(report, name, func, *args)
-
-
-def run_and_collect(report, name, func, *args):
-    """Run a tool, store its result, then pause so the user can read output."""
-    result = func(*args)
-
-    # Submenus can return None when the user chooses Return. In that case, do
-    # not add an empty report section and do not pause again. One prompt is plenty.
-    if result is None:
-        return
-
-    report.add_result(name, result)
-    Prompt.ask("Press Enter to continue")
-
-
-def export_menu(report, config):
-    """Report export submenu."""
+def main() -> None:
+    settings = load_settings()
+    if settings.get("startup_dependency_audit", True):
+        startup_dependency_audit(settings.get("auto_install_dependencies", "ask"))
+        pause()
     while True:
         console.clear()
-        table = menu_table("Export Reports")
-        table.add_row("1", "Export JSON")
-        table.add_row("2", "Export CSV")
-        table.add_row("3", "Export HTML")
-        table.add_row("4", "Export All")
-        add_zero_row(table, "Return")
-
-        console.print(table)
-
-        choice = Prompt.ask("Selection")
-
-        if choice == "1":
-            console.print(report.export_json(config))
-        elif choice == "2":
-            console.print(report.export_csv(config))
-        elif choice == "3":
-            console.print(report.export_html(config))
-        elif choice == "4":
-            console.print(report.export_all(config))
-        elif choice == "0":
-            return
-
-        Prompt.ask("Press Enter to continue")
-
-
-def main_menu():
-    """Primary application menu."""
-    config = load_config()
-    report = ReportSession()
-
-    while True:
-        console.clear()
-
-        mode = "Administrator" if is_admin() else "Normal"
-
-        table = menu_table(f"Network Toolkit — {mode} Mode")
-
-        options = [
-            "Useful Interface / IP Info",
-            "All Interface / IP Info",
-            "Gateway Info",
-            "DNS Test",
-            "Internet Reachability",
-            "Internet Speed Test",
-            "Wi-Fi Info",
-            "Wi-Fi AP Scan",
-            "Advanced Wi-Fi Diagnostics",
-            "Subnet Scan",
-            "Switch + Port Info",
-            "Connection Tests",
-            "Restart in Administrator Mode",
-            "Permissions / Setup Help",
-            "Dependency Checks / Auto-Fixes",
-            "Export Reports",
-            "Settings",
-        ]
-
-        for i, item in enumerate(options, start=1):
-            table.add_row(str(i), item)
-
-        # Spacer row before Exit, because visual breathing room should not be a
-        # luxury feature. Menus deserve dignity too.
-        table.add_row("", "")
-        table.add_row("0", "Exit")
-
-        console.print(table)
-        console.print(f"Collected report sections: [green]{len(report.results)}[/green]")
-        console.print(f"Current mode: [cyan]{mode}[/cyan]")
-
-        choice = Prompt.ask("Selection")
-
-        if choice == "1":
-            run_and_collect(report, "useful_interface_ip_info", show_interfaces)
-        elif choice == "2":
-            run_and_collect(report, "all_interface_ip_info", show_all_interfaces)
-        elif choice == "3":
-            run_and_collect(report, "gateway_info", show_gateway)
-        elif choice == "4":
-            run_and_collect(report, "dns_test", dns_test, config)
-        elif choice == "5":
-            run_and_collect(report, "internet_reachability", internet_test, config)
-        elif choice == "6":
-            run_and_collect(report, "internet_speed_test", speed_test)
-        elif choice == "7":
-            run_and_collect(report, "wifi_info", wifi_info, config)
-        elif choice == "8":
-            run_admin_required(report, "wifi_ap_scan", wifi_scan, config)
-        elif choice == "9":
-            run_admin_required(report, "advanced_wifi_diagnostics", advanced_wifi_diagnostics, config)
-        elif choice == "10":
-            run_and_collect(report, "subnet_scan", subnet_scan, config)
-        elif choice == "11":
-            run_admin_required(report, "switch_port_info", switch_port_info)
-        elif choice == "12":
-            run_and_collect(report, "connection_tests", connection_quality_submenu, config)
-        elif choice == "13":
-            restart_in_admin_mode()
-        elif choice == "14":
-            run_and_collect(report, "permissions_help", show_permissions_help)
-        elif choice == "15":
-            run_and_collect(report, "dependency_checks", dependency_check_menu)
-        elif choice == "16":
-            export_menu(report, config)
-        elif choice == "17":
-            settings_menu()
-            config = load_config()
-        elif choice == "0":
-            clean_exit()
-
+        console.print(Panel.fit("[bold cyan]Network Toolkit[/bold cyan]\nCross-platform diagnostics starter", border_style="cyan"))
+        console.print("1) Interface / IP Info")
+        console.print("2) DNS Test")
+        console.print("3) Internet Ping Test")
+        console.print("4) Public IP")
+        console.print("5) Internet Speed Test")
+        console.print("6) Wi-Fi Info")
+        console.print("7) Wi-Fi AP Scan")
+        console.print("8) Subnet Scan")
+        console.print("9) Port Scan")
+        console.print("10) OS Fingerprint")
+        console.print("11) Switch + Port Info (LLDP)")
+        console.print("12) PoE Info")
+        console.print("13) LAN Speed Test (iperf3 client)")
+        console.print("14) Packet Capture")
+        console.print("15) Latency Monitor")
+        console.print("16) Dependency Status")
+        console.print("17) Settings")
+        console.print("0) Exit")
+        choice = input("\nSelection: ").strip()
+        if choice == "1": show_interfaces()
+        elif choice == "2": dns_test()
+        elif choice == "3": ping_test()
+        elif choice == "4": public_ip()
+        elif choice == "5": speed_test()
+        elif choice == "6": wifi_info()
+        elif choice == "7": wifi_scan()
+        elif choice == "8": subnet_scan()
+        elif choice == "9": port_scan()
+        elif choice == "10": os_fingerprint()
+        elif choice == "11": switch_port_info()
+        elif choice == "12": poe_info()
+        elif choice == "13": iperf_client()
+        elif choice == "14": packet_capture()
+        elif choice == "15": latency_monitor()
+        elif choice == "16": print_dependency_status()
+        elif choice == "17": settings_menu()
+        elif choice == "0": break
+        else:
+            console.print("[red]Invalid selection.[/red]")
+        pause()
 
 if __name__ == "__main__":
-    try:
-        main_menu()
-    except KeyboardInterrupt:
-        console.print()
-        console.print("[yellow]Interrupted by user.[/yellow]")
-        console.print()
-        sys.exit(0)
-    except Exception as e:
-        console.print()
-        console.print(f"[red]Unexpected error:[/red] {e}")
-        console.print()
-        sys.exit(1)
+    main()

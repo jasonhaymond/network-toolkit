@@ -1,42 +1,26 @@
-"""
-Interface diagnostics.
-
-Shows useful network interfaces by default, while allowing an all-interfaces view
-for those glorious moments when you really do need to stare at utun, awdl, bridge,
-and other digital plumbing.
-"""
-
+from __future__ import annotations
+import socket
+import psutil
 from rich.console import Console
 from rich.table import Table
-from core.utils import interface_records, get_primary_interface_record
 
 console = Console()
 
-
-def _print_interface_table(records, title):
-    table = Table(title=title)
+def show_interfaces() -> None:
+    table = Table(title="Network Interfaces")
     table.add_column("Interface")
-    table.add_column("IP Address")
-    table.add_column("Subnet")
-    table.add_column("CIDR")
+    table.add_column("IPv4")
+    table.add_column("Netmask")
     table.add_column("MAC")
-    table.add_column("Status")
-    table.add_column("Speed")
-    table.add_column("Hidden?")
-    for record in records:
-        table.add_row(record.get("interface", ""), record.get("ip_address", ""), record.get("subnet", ""), f"/{record.get('cidr')}" if record.get("cidr") != "" else "", record.get("mac", ""), record.get("status", ""), record.get("speed", ""), "Yes" if record.get("hidden_by_default") else "No")
+    addrs = psutil.net_if_addrs()
+    stats = psutil.net_if_stats()
+    for name, addresses in addrs.items():
+        ipv4 = netmask = mac = ""
+        for addr in addresses:
+            if addr.family == socket.AF_INET:
+                ipv4, netmask = addr.address, addr.netmask or ""
+            elif getattr(psutil, "AF_LINK", None) == addr.family:
+                mac = addr.address
+        up = "up" if stats.get(name) and stats[name].isup else "down"
+        table.add_row(f"{name} ({up})", ipv4, netmask, mac)
     console.print(table)
-
-
-def show_interfaces(include_unhelpful=False):
-    records = interface_records(include_unhelpful=include_unhelpful)
-    title = "Useful Interface / IP Information" if not include_unhelpful else "All Interface / IP Information"
-    _print_interface_table(records, title)
-    primary = get_primary_interface_record()
-    if primary:
-        console.print(f"\n[green]Primary/default connection:[/green] {primary['interface']} | {primary['ip_address']} | {primary['subnet']}")
-    return records
-
-
-def show_all_interfaces():
-    return show_interfaces(include_unhelpful=True)

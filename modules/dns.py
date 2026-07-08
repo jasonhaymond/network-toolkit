@@ -1,20 +1,18 @@
+from __future__ import annotations
+import socket, time
 from rich.console import Console
-from core.utils import run_command
-
+from core.config import load_settings
 console = Console()
 
-
-def dns_test(config):
-    domain = config["dns_test_domain"]
-    dns_server = config["dns_server"]
-
-    console.print(f"[cyan]DNS Test[/cyan]")
-    console.print(f"Domain: {domain}")
-    console.print(f"DNS Server: {dns_server}\n")
-
-    result = run_command(["nslookup", domain, dns_server])
-    console.print(result["stdout"] or result["stderr"])
-
-    result["domain"] = domain
-    result["dns_server"] = dns_server
-    return result
+def dns_test() -> None:
+    settings = load_settings()
+    domain = settings.get("dns_test_domain", "google.com")
+    start = time.perf_counter()
+    try:
+        ips = socket.gethostbyname_ex(domain)[2]
+        elapsed = (time.perf_counter() - start) * 1000
+        console.print(f"Domain: {domain}")
+        console.print(f"Resolved: {', '.join(ips)}")
+        console.print(f"Latency: {elapsed:.1f} ms")
+    except Exception as e:
+        console.print(f"[red]DNS test failed:[/red] {e}")
