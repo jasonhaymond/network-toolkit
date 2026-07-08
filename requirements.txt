@@ -1,0 +1,8 @@
+rich
+psutil
+pyyaml
+ping3
+requests
+speedtest-cli
+pyobjc-framework-CoreWLAN; sys_platform == "darwin"
+pyobjc-framework-CoreLocation; sys_platform == "darwin"

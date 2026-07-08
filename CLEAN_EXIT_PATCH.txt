@@ -1,0 +1,44 @@
+
+Add to main.py:
+
+import sys
+import atexit
+
+def goodbye():
+    print("\nNetwork Toolkit closed.\n")
+
+atexit.register(goodbye)
+
+def clean_exit():
+    try:
+        console.clear()
+    except Exception:
+        pass
+
+    print("\nNetwork Toolkit exited successfully.\n")
+    sys.exit(0)
+
+Replace:
+elif choice == "15":
+    break
+
+With:
+elif choice == "15":
+    clean_exit()
+
+Replace:
+
+if __name__ == "__main__":
+    main_menu()
+
+With:
+
+if __name__ == "__main__":
+    try:
+        main_menu()
+    except KeyboardInterrupt:
+        print("\nInterrupted by user.\n")
+        sys.exit(0)
+    except Exception as e:
+        print(f"\nUnexpected error: {e}\n")
+        sys.exit(1)
