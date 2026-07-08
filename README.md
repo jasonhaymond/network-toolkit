@@ -71,6 +71,37 @@ For best results on Windows, run PowerShell or Windows Terminal as Administrator
 
 ---
 
+
+
+# Launcher / Installer Structure
+
+The root launcher files are intentionally small:
+
+```text
+launch.sh
+launch.command
+launch.bat
+install.sh
+install.bat
+```
+
+They delegate to shared platform helpers:
+
+```text
+scripts/
+├── unix/
+│   ├── common.sh
+│   ├── install_unix.sh
+│   └── launch_unix.sh
+└── windows/
+    ├── common.bat
+    ├── detect_python.bat
+    ├── install_windows.bat
+    └── launch_windows.bat
+```
+
+This keeps duplicated logic out of the root scripts. Updating Python detection, venv creation, dependency installs, or launch behavior now happens in one shared helper per platform, because maintaining the same bug in four places is a hobby best left to printer drivers.
+
 # Install Scripts
 
 ## macOS / Linux
