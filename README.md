@@ -6,7 +6,7 @@ Cross-platform modular network diagnostics toolkit for:
 - Windows 10+
 - Ubuntu-based Linux
 
-No version number is used in the project folder or app title so you can replace/update the folder without changing your workflow. Humanity briefly defeats chaos. Briefly.
+
 
 ---
 

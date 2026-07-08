@@ -152,7 +152,8 @@ def main_menu():
 
         for i, item in enumerate(options, start=1):
             table.add_row(str(i), item)
-
+            
+        table.add_row("", "")
         table.add_row("0", "Exit")
 
         console.print(table)
