@@ -3,6 +3,7 @@ import re
 from rich.console import Console
 from rich.table import Table
 from core.utils import run_command
+from core.dependencies import require_command
 
 console = Console()
 
@@ -41,6 +42,14 @@ def parse_speedtest(output):
 
 def speed_test():
     console.print("[cyan]Internet Speed Test[/cyan]\n")
+    if not require_command("speedtest-cli"):
+        return {
+            "tool": "internet_speed_test",
+            "success": False,
+            "error": "speedtest-cli is required for this speed test and is not installed.",
+            "missing_command": "speedtest-cli",
+        }
+
     result = run_command(["speedtest-cli"], timeout=120)
     if result["stdout"]:
         parsed = parse_speedtest(result["stdout"])

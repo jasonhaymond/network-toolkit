@@ -172,6 +172,21 @@ Why? Because many corporate networks block ICMP ping. The network may be fine, b
 
 
 
+
+
+## Native DNS Engine
+
+The toolkit now includes a built-in DNS query engine.
+
+It does **not** require `dnspython`.
+
+The DNS timing test uses:
+
+1. Native UDP DNS query using Python's standard library
+2. System resolver fallback if direct UDP DNS fails
+
+This measures real DNS query/response time instead of timing the `nslookup` executable. Fewer dependencies, fewer weird install problems, fewer opportunities for software to embarrass itself in public.
+
 ## True DNS Lookup Timing
 
 The DNS connection test now measures actual DNS query time instead of timing the `nslookup` process.
@@ -458,6 +473,41 @@ Windows does not include a built-in `lldpctl` equivalent. Use Wireshark/Npcap or
 
 ---
 
+
+
+# Smart Dependency Fixes
+
+The toolkit now includes smart dependency checks and suggested fixes.
+
+When a missing external command is detected, such as:
+
+```text
+command not found: nmap
+```
+
+the toolkit can show:
+
+- what the command is used for
+- the recommended install command for your platform
+- optional automatic install prompt when supported
+
+Examples:
+
+| Missing Tool | macOS Fix | Ubuntu Fix | Windows |
+|---|---|---|---|
+| `nmap` | `brew install nmap` | `sudo apt install nmap` | Install from nmap.org |
+| `lldpctl` | `brew install lldpd` | `sudo apt install lldpd` | Use Wireshark/Npcap or vendor tools |
+| `iperf3` | `brew install iperf3` | `sudo apt install iperf3` | Install iPerf3 manually |
+| `speedtest-cli` | `brew install speedtest-cli` | `sudo apt install speedtest-cli` | Python package or manual install |
+
+There is also a menu:
+
+```text
+Dependency Checks / Auto-Fixes
+```
+
+Because "command not found" is not a troubleshooting strategy. It's a fortune cookie with worse typography.
+
 # 🧾 Current Features
 
 - Useful interface filtering
@@ -484,6 +534,7 @@ Windows does not include a built-in `lldpctl` equivalent. Use Wireshark/Npcap or
 - Clean exit handling
 - Restart in Administrator Mode
 - Permissions / Setup Help
+- Smart dependency checks and suggested/automatic fixes
 
 ---
 

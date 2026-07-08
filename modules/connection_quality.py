@@ -13,17 +13,15 @@ Methods:
 - iPerf3, when configured
 """
 
+import random
 import socket
 import ssl
+import struct
 import statistics
 import subprocess
 import time
 from urllib.parse import urlparse
 
-try:
-    import dns.resolver
-except Exception:
-    dns = None
 
 from rich.console import Console
 from rich.table import Table
@@ -31,6 +29,7 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 
 from core.utils import run_command
+from core.dependencies import require_command
 from core.ui import menu_table, add_zero_row
 
 console = Console()
@@ -141,65 +140,223 @@ def tcp_connect_test(host, port, attempts=10, timeout=3):
     return result
 
 
+
+def encode_dns_name(domain):
+    """Encode a domain name into DNS wire format.
+
+    Example:
+        google.com -> b'\x06google\x03com\x00'
+
+    DNS: somehow both elegant and cursed, like networking wearing a bow tie.
+    """
+    domain = domain.strip(".")
+    parts = domain.split(".")
+    encoded = b""
+
+    for part in parts:
+        label = part.encode("idna")
+        if len(label) > 63:
+            raise ValueError(f"DNS label too long: {part}")
+        encoded += bytes([len(label)]) + label
+
+    return encoded + b"\x00"
+
+
+def decode_dns_name(packet, offset):
+    """Decode a DNS name from a packet, supporting compression pointers."""
+    labels = []
+    jumped = False
+    original_offset = offset
+    jumps = 0
+
+    while True:
+        if offset >= len(packet):
+            raise ValueError("DNS name decode ran past packet length")
+
+        length = packet[offset]
+
+        # Compression pointer: two high bits set.
+        if (length & 0xC0) == 0xC0:
+            if offset + 1 >= len(packet):
+                raise ValueError("Truncated DNS compression pointer")
+            pointer = ((length & 0x3F) << 8) | packet[offset + 1]
+            if not jumped:
+                original_offset = offset + 2
+            offset = pointer
+            jumped = True
+            jumps += 1
+            if jumps > 20:
+                raise ValueError("Too many DNS compression jumps")
+            continue
+
+        if length == 0:
+            offset += 1
+            break
+
+        offset += 1
+        label = packet[offset:offset + length]
+        labels.append(label.decode("idna", errors="replace"))
+        offset += length
+
+    return ".".join(labels), (original_offset if jumped else offset)
+
+
+def build_dns_query(domain, query_type=1):
+    """Build a minimal UDP DNS query.
+
+    query_type:
+        1  = A
+        28 = AAAA
+    """
+    transaction_id = random.randint(0, 65535)
+
+    # Header:
+    # ID, flags, QDCOUNT, ANCOUNT, NSCOUNT, ARCOUNT
+    # 0x0100 means standard recursive query.
+    header = struct.pack("!HHHHHH", transaction_id, 0x0100, 1, 0, 0, 0)
+
+    question = encode_dns_name(domain)
+    question += struct.pack("!HH", query_type, 1)  # QTYPE, QCLASS IN
+
+    return transaction_id, header + question
+
+
+def parse_dns_response(packet, expected_transaction_id):
+    """Parse a minimal DNS response and return useful answer records."""
+    if len(packet) < 12:
+        raise ValueError("DNS response too short")
+
+    transaction_id, flags, qdcount, ancount, nscount, arcount = struct.unpack("!HHHHHH", packet[:12])
+
+    if transaction_id != expected_transaction_id:
+        raise ValueError("DNS transaction ID mismatch")
+
+    rcode = flags & 0x000F
+    rcode_map = {
+        0: "NOERROR",
+        1: "FORMERR",
+        2: "SERVFAIL",
+        3: "NXDOMAIN",
+        4: "NOTIMP",
+        5: "REFUSED",
+    }
+    status = rcode_map.get(rcode, f"RCODE_{rcode}")
+
+    offset = 12
+
+    # Skip questions.
+    for _ in range(qdcount):
+        _, offset = decode_dns_name(packet, offset)
+        offset += 4  # QTYPE + QCLASS
+
+    answers = []
+
+    for _ in range(ancount):
+        name, offset = decode_dns_name(packet, offset)
+
+        if offset + 10 > len(packet):
+            raise ValueError("Truncated DNS answer header")
+
+        record_type, record_class, ttl, rdlength = struct.unpack("!HHIH", packet[offset:offset + 10])
+        offset += 10
+
+        rdata_offset = offset
+        rdata = packet[offset:offset + rdlength]
+        offset += rdlength
+
+        value = None
+        record_label = str(record_type)
+
+        if record_type == 1 and rdlength == 4:  # A
+            value = socket.inet_ntoa(rdata)
+            record_label = "A"
+        elif record_type == 28 and rdlength == 16:  # AAAA
+            value = socket.inet_ntop(socket.AF_INET6, rdata)
+            record_label = "AAAA"
+        elif record_type == 5:  # CNAME
+            value, _ = decode_dns_name(packet, rdata_offset)
+            record_label = "CNAME"
+
+        answers.append({
+            "name": name,
+            "type": record_label,
+            "class": record_class,
+            "ttl": ttl,
+            "value": value if value is not None else rdata.hex(),
+        })
+
+    return {
+        "status": status,
+        "answer_count": ancount,
+        "answers": answers,
+    }
+
+
+def native_udp_dns_query(domain, dns_server, query_type=1, timeout=3):
+    """Perform one direct UDP DNS query and return timing + records."""
+    transaction_id, query = build_dns_query(domain, query_type=query_type)
+
+    start = time.perf_counter()
+
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.settimeout(float(timeout))
+        sock.sendto(query, (dns_server, 53))
+        response, _ = sock.recvfrom(4096)
+
+    latency_ms = round((time.perf_counter() - start) * 1000, 2)
+    parsed = parse_dns_response(response, transaction_id)
+
+    return {
+        "latency_ms": latency_ms,
+        "status": parsed["status"],
+        "answers": parsed["answers"],
+        "answer_count": parsed["answer_count"],
+    }
+
+
 def dns_latency_test(domain, dns_server=None, attempts=10, timeout=3):
-    """Measure true DNS query latency.
-
-    This intentionally avoids timing nslookup as the primary measurement.
-
-    Why? A subprocess call to nslookup includes:
-    - process startup time
-    - endpoint security inspection
-    - shell/path lookup
-    - Windows DNS client behavior
-    - DNS suffix/search behavior
-    - output parsing time
-    - occasional timeout weirdness
-
-    That is useful for "does nslookup work?" but terrible for "how fast was the DNS
-    lookup?" Humans discovered this the hard way, as usual.
+    """Measure true DNS lookup latency without third-party dependencies.
 
     Primary method:
-    - dnspython direct DNS query to the configured DNS server
+    - Native UDP DNS query written with Python's standard library.
 
     Fallback method:
-    - Python system resolver via socket.getaddrinfo()
+    - Python system resolver via socket.getaddrinfo().
 
-    Debug method:
-    - nslookup can still be added to output later, but it should not drive latency.
+    This avoids timing nslookup process startup, endpoint security inspection,
+    subprocess overhead, output parsing, and all the other bureaucratic confetti
+    that made previous results show fake 8-second averages.
     """
     samples = []
     timeout = float(timeout)
 
     for i in range(1, attempts + 1):
         errors = []
-        resolver_used = ""
 
-        # Best measurement: direct DNS query using dnspython.
-        if dns_server and dns is not None:
+        # Best measurement: direct UDP DNS query to the configured DNS server.
+        if dns_server:
             try:
-                resolver = dns.resolver.Resolver(configure=False)
-                resolver.nameservers = [dns_server]
-                resolver.timeout = timeout
-                resolver.lifetime = timeout
+                result = native_udp_dns_query(domain, dns_server, query_type=1, timeout=timeout)
 
-                start = time.perf_counter()
-                answer = resolver.resolve(domain, "A")
-                latency = (time.perf_counter() - start) * 1000
+                if result["status"] != "NOERROR":
+                    raise RuntimeError(f"DNS status {result['status']}")
 
                 samples.append({
                     "sample": i,
                     "success": True,
-                    "latency_ms": round(latency, 2),
-                    "resolver_used": f"dnspython direct query via {dns_server}",
-                    "answers": [r.to_text() for r in answer],
+                    "latency_ms": result["latency_ms"],
+                    "resolver_used": f"native UDP DNS via {dns_server}",
+                    "status": result["status"],
+                    "answers": result["answers"],
                     "error": "",
                 })
                 continue
-            except Exception as e:
-                errors.append(f"dnspython direct query: {e}")
 
-        # Fallback: system resolver. This measures what apps normally experience,
-        # but it may include OS cache, suffix search, and local resolver behavior.
+            except Exception as e:
+                errors.append(f"native UDP DNS: {e}")
+
+        # Fallback: system resolver. This can include OS cache and local resolver
+        # behavior, but still avoids subprocess timing.
         try:
             start = time.perf_counter()
             results = socket.getaddrinfo(domain, None)
@@ -216,10 +373,12 @@ def dns_latency_test(domain, dns_server=None, attempts=10, timeout=3):
                 "success": True,
                 "latency_ms": round(latency, 2),
                 "resolver_used": "system resolver fallback",
-                "answers": addresses,
+                "status": "SYSTEM_RESOLVER_OK",
+                "answers": [{"type": "ADDR", "value": address} for address in addresses],
                 "error": "",
             })
             continue
+
         except Exception as e:
             errors.append(f"system resolver fallback: {e}")
 
@@ -228,6 +387,7 @@ def dns_latency_test(domain, dns_server=None, attempts=10, timeout=3):
             "success": False,
             "latency_ms": None,
             "resolver_used": "",
+            "status": "FAILED",
             "answers": [],
             "error": " | ".join(errors),
         })
@@ -241,12 +401,12 @@ def dns_latency_test(domain, dns_server=None, attempts=10, timeout=3):
         "method": "DNS Lookup",
         "target": target,
         "notes": (
-            "Measures true DNS query latency using dnspython when available. "
-            "Falls back to the OS resolver if direct DNS is unavailable. "
-            "Does not time nslookup subprocess startup as DNS latency."
+            "Measures true DNS query latency using a built-in native UDP DNS query. "
+            "Falls back to the OS resolver if direct UDP DNS is unavailable. "
+            "Does not require dnspython and does not time nslookup subprocess startup."
         ),
-        "measurement_type": "direct_dns_query" if dns_server and dns is not None else "system_resolver",
-        "dnspython_available": dns is not None,
+        "measurement_type": "native_udp_dns",
+        "third_party_dns_dependency": False,
     })
     return result
 
@@ -377,6 +537,16 @@ def iperf3_test(server, duration=10):
             "success": False,
             "target": "",
             "notes": "No iPerf3 server configured. Add iperf3_server in Settings.",
+        }
+
+    if not require_command("iperf3"):
+        return {
+            "method": "iPerf3",
+            "target": server,
+            "success": False,
+            "error": "iperf3 is required for this test and is not installed.",
+            "missing_command": "iperf3",
+            "notes": "Install iPerf3 or configure a different connection quality method.",
         }
 
     result = run_command(["iperf3", "-c", server, "-t", str(duration), "-J"], timeout=duration + 15)

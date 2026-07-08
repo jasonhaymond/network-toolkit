@@ -14,6 +14,7 @@ from rich.console import Console
 from rich.table import Table
 
 from core.utils import run_command
+from core.dependencies import require_command
 
 console = Console()
 
@@ -307,6 +308,14 @@ def wifi_info(config=None):
         return {"collector": "netsh wlan", "summary": summary, "parsed": parsed, "raw": result}
 
     if system == "Linux":
+        if not require_command("nmcli"):
+            return {
+                "collector": "nmcli",
+                "success": False,
+                "error": "nmcli is required for Linux Wi-Fi diagnostics and is not installed.",
+                "missing_command": "nmcli",
+            }
+
         result = run_command(["nmcli", "-t", "-f", "active,ssid,bssid,chan,rate,signal,security", "dev", "wifi"], timeout=30)
         networks = parse_nmcli_wifi(result.get("stdout", ""))
         active = next((n for n in networks if n.get("active") == "yes"), networks[0] if networks else {})
@@ -343,6 +352,14 @@ def wifi_scan(config=None):
         console.print(result["stdout"] or result["stderr"])
         return result
     elif system == "Linux":
+        if not require_command("nmcli"):
+            return {
+                "collector": "nmcli",
+                "success": False,
+                "error": "nmcli is required for Linux Wi-Fi scanning and is not installed.",
+                "missing_command": "nmcli",
+            }
+
         result = run_command(["nmcli", "-t", "-f", "active,ssid,bssid,chan,rate,signal,security", "dev", "wifi", "list"], timeout=60)
         networks = parse_nmcli_wifi(result.get("stdout", ""))
         if not networks:

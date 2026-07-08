@@ -2,7 +2,8 @@ import re
 from rich.console import Console
 from rich.prompt import Prompt
 from rich.table import Table
-from core.utils import run_command, get_dynamic_subnet
+from core.utils import run_command
+from core.dependencies import require_command, get_dynamic_subnet
 
 console = Console()
 
@@ -44,6 +45,14 @@ def subnet_scan(config):
     subnet = Prompt.ask("Subnet to scan", default=default_subnet)
     console.print(f"[cyan]Subnet Scan: {subnet}[/cyan]\n")
     console.print("[dim]Tip: MAC addresses usually require local subnet access and may need sudo/nmap privileges.[/dim]\n")
+    if not require_command("nmap"):
+        return {
+            "tool": "subnet_scan",
+            "success": False,
+            "error": "nmap is required for subnet scanning and is not installed.",
+            "missing_command": "nmap",
+        }
+
     result = run_command(["nmap", "-sn", subnet], timeout=180)
     hosts = parse_nmap_ping_scan(result["stdout"])
     if hosts:

@@ -34,6 +34,7 @@ from modules.monitoring import latency_monitor
 from modules.connection_quality import connection_quality_submenu
 from modules.switch import switch_port_info
 from modules.permissions import show_permissions_help
+from modules.dependency_checks import dependency_check_menu
 
 console = Console()
 
@@ -184,6 +185,7 @@ def main_menu():
             "Connection Tests",
             "Restart in Administrator Mode",
             "Permissions / Setup Help",
+            "Dependency Checks / Auto-Fixes",
             "Export Reports",
             "Settings",
         ]
@@ -231,8 +233,10 @@ def main_menu():
         elif choice == "14":
             run_and_collect(report, "permissions_help", show_permissions_help)
         elif choice == "15":
-            export_menu(report, config)
+            run_and_collect(report, "dependency_checks", dependency_check_menu)
         elif choice == "16":
+            export_menu(report, config)
+        elif choice == "17":
             settings_menu()
             config = load_config()
         elif choice == "0":
