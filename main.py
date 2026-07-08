@@ -148,12 +148,14 @@ def main_menu():
             "Restart in Administrator Mode",
             "Permissions / Setup Help",
             "Export Reports",
-            "Settings",
-            "Exit",
+            "Settings"
         ]
 
         for i, item in enumerate(options, start=1):
             table.add_row(str(i), item)
+        
+        table.add_row("", "")
+        table.add_row("0", "Exit")
 
         console.print(table)
         console.print(f"Collected report sections: [green]{len(report.results)}[/green]")
@@ -194,7 +196,7 @@ def main_menu():
         elif choice == "16":
             settings_menu()
             config = load_config()
-        elif choice == "17":
+        elif choice == "0":
             clean_exit()
 
 
